@@ -6,7 +6,7 @@ const GRAPH_API = "https://graph.facebook.com/v19.0";
  * Enviar mensaje de Instagram
  */
 async function sendMessage(recipientId, text) {
-  const token = process.env.INSTAGRAM_TOKEN;
+  const token = process.env.FACEBOOK_PAGE_TOKEN;
   if (!token) {
     console.warn("⚠️  Instagram no configurado. Mensaje simulado:", { recipientId, text });
     return { success: true, simulated: true };
