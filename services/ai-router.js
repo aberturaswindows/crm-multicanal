@@ -1,61 +1,57 @@
-const axios = require("axios");
+var axios = require("axios");
 
-const DEPARTMENTS = {
+var DEPARTMENTS = {
   ventas: { label: "Ventas", description: "Consultas comerciales, cotizaciones, planes, productos, demos, precios" },
-  soporte: { label: "Soporte Técnico", description: "Problemas técnicos, errores, configuración, bugs, rendimiento" },
-  admin: { label: "Administración", description: "Facturas, pagos, datos fiscales, CUIT, suscripciones, comprobantes" },
-  reclamos: { label: "Reclamos", description: "Quejas, insatisfacción, devoluciones, reembolsos, denuncias" },
+  soporte: { label: "Soporte Tecnico", description: "Problemas tecnicos, errores, configuracion, bugs, rendimiento" },
+  admin: { label: "Administracion", description: "Facturas, pagos, datos fiscales, CUIT, suscripciones, comprobantes" },
+  reclamos: { label: "Reclamos", description: "Quejas, insatisfaccion, devoluciones, reembolsos, denuncias" }
 };
 
-/**
- * Obtener la hora actual en Argentina (UTC-3)
- */
 function getArgentinaTime() {
-  const now = new Date();
-  const argTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
-  const hour = argTime.getHours();
-
-  let greeting;
+  var now = new Date();
+  var argTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+  var hour = argTime.getHours();
+  var greeting;
   if (hour >= 6 && hour < 13) {
-    greeting = "Buenos días";
+    greeting = "Buenos dias";
   } else if (hour >= 13 && hour < 20) {
     greeting = "Buenas tardes";
   } else {
     greeting = "Buenas noches";
   }
-
-  return { hour, greeting };
+  return { hour: hour, greeting: greeting };
 }
 
-/**
- * Clasifica un mensaje y devuelve el departamento, confianza y razón
- */
-async function classifyMessage(messageText, conversationHistory = []) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+async function classifyMessage(messageText, conversationHistory) {
+  if (!conversationHistory) conversationHistory = [];
+  var apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.warn("⚠️  ANTHROPIC_API_KEY no configurada. Usando clasificación por keywords.");
+    console.warn("ANTHROPIC_API_KEY no configurada. Usando clasificacion por keywords.");
     return classifyByKeywords(messageText);
   }
 
-  const historyText = conversationHistory.length > 0
-    ? `\nHistorial previo de la conversación:\n${conversationHistory.map(m => `${m.direction === "incoming" ? "Cliente" : "Agente"}: ${m.content}`).join("\n")}\n`
-    : "";
+  var historyText = "";
+  if (conversationHistory.length > 0) {
+    var lines = conversationHistory.map(function(m) {
+      var role = m.direction === "incoming" ? "Cliente" : "Agente";
+      return role + ": " + m.content;
+    });
+    historyText = "\nHistorial previo de la conversacion:\n" + lines.join("\n") + "\n";
+  }
 
-  const prompt = `Sos un sistema de clasificación de consultas para un CRM empresarial. Tu trabajo es analizar el mensaje del cliente y determinar a qué departamento debe ser derivado.
-
-Departamentos disponibles:
-- ventas: ${DEPARTMENTS.ventas.description}
-- soporte: ${DEPARTMENTS.soporte.description}
-- admin: ${DEPARTMENTS.admin.description}
-- reclamos: ${DEPARTMENTS.reclamos.description}
-${historyText}
-Último mensaje del cliente: "${messageText}"
-
-Respondé SOLO con un JSON válido (sin markdown, sin backticks) con este formato exacto:
-{"department":"ventas|soporte|admin|reclamos","confidence":"alta|media|baja","reason":"explicación breve"}`;
+  var prompt = "Sos un sistema de clasificacion de consultas para un CRM empresarial. Tu trabajo es analizar el mensaje del cliente y determinar a que departamento debe ser derivado.\n\n";
+  prompt += "Departamentos disponibles:\n";
+  prompt += "- ventas: " + DEPARTMENTS.ventas.description + "\n";
+  prompt += "- soporte: " + DEPARTMENTS.soporte.description + "\n";
+  prompt += "- admin: " + DEPARTMENTS.admin.description + "\n";
+  prompt += "- reclamos: " + DEPARTMENTS.reclamos.description + "\n";
+  prompt += historyText + "\n";
+  prompt += 'Ultimo mensaje del cliente: "' + messageText + '"\n\n';
+  prompt += 'Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato exacto:\n';
+  prompt += '{"department":"ventas|soporte|admin|reclamos","confidence":"alta|media|baja","reason":"explicacion breve"}';
 
   try {
-    const res = await axios.post("https://api.anthropic.com/v1/messages", {
+    var res = await axios.post("https://api.anthropic.com/v1/messages", {
       model: "claude-sonnet-4-20250514",
       max_tokens: 150,
       messages: [{ role: "user", content: prompt }]
@@ -67,8 +63,8 @@ Respondé SOLO con un JSON válido (sin markdown, sin backticks) con este format
       }
     });
 
-    const text = res.data.content?.[0]?.text || "";
-    const parsed = JSON.parse(text);
+    var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
+    var parsed = JSON.parse(text);
     return {
       department: parsed.department || "ventas",
       confidence: parsed.confidence || "baja",
@@ -80,38 +76,35 @@ Respondé SOLO con un JSON válido (sin markdown, sin backticks) con este format
   }
 }
 
-/**
- * Genera una sugerencia de respuesta para el agente
- */
 async function generateSuggestion(contact, messages) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return "IA no configurada. Configurá ANTHROPIC_API_KEY en el archivo .env";
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return "IA no configurada. Configura ANTHROPIC_API_KEY en el archivo .env";
 
-  const dept = DEPARTMENTS[contact.department] || DEPARTMENTS.ventas;
-  const history = messages.slice(-10).map(m =>
-    `${m.direction === "incoming" ? "Cliente" : "Agente"}: ${m.content}`
-  ).join("\n");
+  var dept = DEPARTMENTS[contact.department] || DEPARTMENTS.ventas;
+  var lastMessages = messages.slice(-10);
+  var history = lastMessages.map(function(m) {
+    var role = m.direction === "incoming" ? "Cliente" : "Agente";
+    return role + ": " + m.content;
+  }).join("\n");
 
-  const channelLabels = {
+  var channelLabels = {
     whatsapp: "WhatsApp", instagram: "Instagram", facebook: "Facebook Messenger",
-    email: "Email", telefono: "Teléfono"
+    email: "Email", telefono: "Telefono"
   };
 
-  const { greeting } = getArgentinaTime();
+  var timeInfo = getArgentinaTime();
+  var now = new Date();
+  var argHour = now.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" });
 
-  const prompt = `Sos un agente del área de ${dept.label} de "${process.env.COMPANY_NAME || "NexoCRM"}". El cliente ${contact.name} te contactó por ${channelLabels[contact.channel] || contact.channel}.
-
-IMPORTANTE: La hora actual en Argentina es las ${new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}. Si saludás, usá "${greeting}".
-
-Tu tono debe ser profesional, empático y orientado a resolver. Si es un reclamo, mostrá comprensión. Si es una venta, sé entusiasta pero no agresivo.
-
-Historial de la conversación:
-${history}
-
-Generá UNA respuesta breve (2-3 oraciones máximo) para el último mensaje del cliente. Solo la respuesta, sin explicaciones ni prefijos.`;
+  var prompt = "Sos un agente del area de " + dept.label + ' de "' + (process.env.COMPANY_NAME || "NexoCRM") + '". ';
+  prompt += "El cliente " + contact.name + " te contacto por " + (channelLabels[contact.channel] || contact.channel) + ".\n\n";
+  prompt += "IMPORTANTE: La hora actual en Argentina es las " + argHour + '. Si saludas, usa "' + timeInfo.greeting + '".\n\n';
+  prompt += "Tu tono debe ser profesional, empatico y orientado a resolver. Si es un reclamo, mostra comprension. Si es una venta, se entusiasta pero no agresivo.\n\n";
+  prompt += "Historial de la conversacion:\n" + history + "\n\n";
+  prompt += "Genera UNA respuesta breve (2-3 oraciones maximo) para el ultimo mensaje del cliente. Solo la respuesta, sin explicaciones ni prefijos.";
 
   try {
-    const res = await axios.post("https://api.anthropic.com/v1/messages", {
+    var res = await axios.post("https://api.anthropic.com/v1/messages", {
       model: "claude-sonnet-4-20250514",
       max_tokens: 250,
       messages: [{ role: "user", content: prompt }]
@@ -123,7 +116,39 @@ Generá UNA respuesta breve (2-3 oraciones máximo) para el último mensaje del 
       }
     });
 
-    return res.data.content?.[0]?.text || "No se pudo generar una sugerencia.";
+    return res.data.content && res.data.content[0] ? res.data.content[0].text : "No se pudo generar una sugerencia.";
   } catch (err) {
     console.error("Error generando sugerencia:", err.message);
-    return "Error al
+    return "Error al conectar con la IA. Intenta de nuevo.";
+  }
+}
+
+function classifyByKeywords(text) {
+  var lower = text.toLowerCase();
+  var rules = {
+    ventas: ["precio", "cotizacion", "presupuesto", "comprar", "plan", "costo", "descuento", "oferta", "contratar", "producto", "catalogo", "promocion", "cuanto sale", "interesado"],
+    soporte: ["no funciona", "error", "problema", "tecnico", "bug", "falla", "ayuda", "configurar", "instalar", "lento", "caido", "no puedo", "soporte", "no anda", "no carga"],
+    admin: ["factura", "pago", "cobro", "recibo", "cuit", "datos fiscales", "transferencia", "suscripcion", "vencimiento", "comprobante"],
+    reclamos: ["reclamo", "queja", "insatisfecho", "mal servicio", "devolver", "reembolso", "devolucion", "pesimo", "inaceptable", "denuncia", "enojado"]
+  };
+
+  var best = "ventas";
+  var bestCount = 0;
+  var depts = Object.keys(rules);
+  for (var i = 0; i < depts.length; i++) {
+    var dept = depts[i];
+    var keywords = rules[dept];
+    var count = 0;
+    for (var j = 0; j < keywords.length; j++) {
+      if (lower.indexOf(keywords[j]) !== -1) count++;
+    }
+    if (count > bestCount) { bestCount = count; best = dept; }
+  }
+
+  var confidence = bestCount >= 3 ? "alta" : bestCount >= 1 ? "media" : "baja";
+  var reason = bestCount > 0 ? "Clasificado por keywords (IA no disponible)" : "Sin keywords detectadas, asignado a ventas por defecto";
+
+  return { department: best, confidence: confidence, reason: reason };
+}
+
+module.exports = { classifyMessage: classifyMessage, generateSuggestion: generateSuggestion, DEPARTMENTS: DEPARTMENTS };
