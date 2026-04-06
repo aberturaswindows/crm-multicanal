@@ -98,6 +98,21 @@ function App() {
   }, [selected?.id]);
 
   useEffect(() => {
+    if (!selected) return;
+    const msgPoll = setInterval(() => {
+      fetch(API + `/contacts/${selected.id}/messages`).then(r => r.json()).then(newMsgs => {
+        setMessages(prev => {
+          if (newMsgs.length !== prev.length) {
+            setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100);
+          }
+          return newMsgs;
+        });
+      }).catch(() => {});
+    }, 3000);
+    return () => clearInterval(msgPoll);
+  }, [selected?.id]);
+
+  useEffect(() => {
     if (view === "routing") {
       fetch(API + "/routing-log").then(r => r.json()).then(setRoutingLog).catch(() => {});
     }
