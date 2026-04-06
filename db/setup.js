@@ -2,7 +2,7 @@ const Database = require("better-sqlite3");
 const fs = require("fs");
 const path = require("path");
 
-const DB_PATH = path.join(__dirname, "..", "data", "crm.db");
+const DB_PATH = fs.existsSync("/data") ? "/data/crm.db" : path.join(__dirname, "..", "data", "crm.db");
 
 function getDb() {
   const dir = path.dirname(DB_PATH);
