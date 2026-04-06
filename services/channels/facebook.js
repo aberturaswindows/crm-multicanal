@@ -25,46 +25,4 @@ async function sendMessage(recipientId, text) {
   }
 
   try {
-    var res = await axios.post(GRAPH_API + "/me/messages", {
-      recipient: { id: recipientId },
-      message: { text: text }
-    }, {
-      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-      params: { access_token: token }
-    });
-
-    return { success: true, messageId: res.data.message_id };
-  } catch (err) {
-    console.error("Error enviando Facebook:", err.response ? err.response.data : err.message);
-    return { success: false, error: err.message };
-  }
-}
-
-function processWebhook(body) {
-  try {
-    var entry = body.entry && body.entry[0] ? body.entry[0] : null;
-    if (!entry) return null;
-
-    var messaging = entry.messaging && entry.messaging[0] ? entry.messaging[0] : null;
-    if (!messaging) return null;
-
-    if (!messaging.message) return null;
-    if (!messaging.message.text) return null;
-    if (messaging.message.is_echo) return null;
-
-    return {
-      channel: "facebook",
-      channelId: messaging.sender.id,
-      senderName: messaging.sender.id,
-      text: messaging.message.text,
-      messageId: messaging.message.mid,
-      timestamp: messaging.timestamp,
-      phoneLine: null
-    };
-  } catch (err) {
-    console.error("Error procesando webhook Facebook:", err);
-    return null;
-  }
-}
-
-module.exports = { sendMessage: sendMessage, processWebhook: processWebhook, getUserProfile: getUserProfile };
+    var res = await axios.post(GRAPH_API + "/me/messages
