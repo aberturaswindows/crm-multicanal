@@ -1,22 +1,22 @@
-const express = require("express");
-const router = express.Router();
-const { getDb } = require("../db/setup");
-const { classifyMessage } = require("../services/ai-router");
-const whatsapp = require("../services/channels/whatsapp");
-const instagram = require("../services/channels/instagram");
-const facebook = require("../services/channels/facebook");
-const email = require("../services/channels/email");
+var express = require("express");
+var router = express.Router();
+var getDb = require("../db/setup").getDb;
+var classifyMessage = require("../services/ai-router").classifyMessage;
+var whatsapp = require("../services/channels/whatsapp");
+var instagram = require("../services/channels/instagram");
+var facebook = require("../services/channels/facebook");
+var email = require("../services/channels/email");
 
 async function handleIncomingMessage(normalized) {
-  const db = getDb();
+  var db = getDb();
 
   try {
-    let contact = db.prepare(
+    var contact = db.prepare(
       "SELECT * FROM contacts WHERE channel = ? AND channel_id = ?"
     ).get(normalized.channel, normalized.channelId);
 
     if (!contact) {
-      const result = db.prepare(
+      var result = db.prepare(
         "INSERT INTO contacts (name, phone, email, channel, channel_id, phone_line, department, status, origin) VALUES (?, ?, ?, ?, ?, ?, 'ventas', 'lead', ?)"
       ).run(
         normalized.senderName || "Contacto nuevo",
@@ -40,11 +40,11 @@ async function handleIncomingMessage(normalized) {
       "INSERT INTO messages (contact_id, direction, content, channel, channel_message_id) VALUES (?, 'incoming', ?, ?, ?)"
     ).run(contact.id, normalized.text, normalized.channel, normalized.messageId);
 
-    const recentMessages = db.prepare(
+    var recentMessages = db.prepare(
       "SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT 10"
     ).all(contact.id).reverse();
 
-    const classification = await classifyMessage(normalized.text, recentMessages);
+    var classification = await classifyMessage(normalized.text, recentMessages);
 
     if (classification.department !== contact.department) {
       db.prepare("UPDATE contacts SET department = ?, ai_confidence = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
@@ -90,13 +90,19 @@ router.post("/meta", async function(req, res) {
     } else if (object === "instagram") {
       normalized = instagram.processWebhook(body);
       if (normalized) {
-        var realName = await instagram.getUserProfile(normalized.channelId);
-        if (realName) {
-          normalized.senderName = realName;
+        var igName = await instagram.getUserProfile(normalized.channelId);
+        if (igName) {
+          normalized.senderName = igName;
         }
       }
     } else if (object === "page") {
       normalized = facebook.processWebhook(body);
+      if (normalized) {
+        var fbName = await facebook.getUserProfile(normalized.channelId);
+        if (fbName) {
+          normalized.senderName = fbName;
+        }
+      }
     }
 
     if (normalized) {
