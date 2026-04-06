@@ -55,24 +55,52 @@ function processWebhook(body) {
     if (!messaging) return null;
 
     if (!messaging.message) return null;
-    if (!messaging.message.text) return null;
     if (messaging.message.is_echo) return null;
 
     var senderId = messaging.sender.id;
-    var entryId = entry.id;
+    var text = messaging.message.text || "";
+    var mediaType = null;
+    var mediaUrl = null;
+    var storyUrl = null;
 
-    console.log("IG webhook - sender: " + senderId + ", entry: " + entryId);
+    // Verificar si es respuesta a una historia
+    if (messaging.message.reply_to && messaging.message.reply_to.story) {
+      storyUrl = messaging.message.reply_to.story.url || null;
+    }
 
-    if (senderId === entryId) return null;
+    // Verificar si tiene archivos adjuntos (imagen, video, audio)
+    if (messaging.message.attachments && messaging.message.attachments.length > 0) {
+      var attachment = messaging.message.attachments[0];
+      var type = attachment.type;
+      var url = attachment.payload && attachment.payload.url ? attachment.payload.url : null;
+
+      if (type === "image" || type === "video" || type === "audio" || type === "file") {
+        mediaType = type;
+        mediaUrl = url;
+      }
+
+      if (!text && mediaType) {
+        if (mediaType === "image") text = "[Imagen]";
+        else if (mediaType === "video") text = "[Video]";
+        else if (mediaType === "audio") text = "[Audio]";
+        else if (mediaType === "file") text = "[Archivo]";
+      }
+    }
+
+    // Si no hay texto ni media, ignorar
+    if (!text && !mediaType) return null;
 
     return {
       channel: "instagram",
       channelId: senderId,
       senderName: senderId,
-      text: messaging.message.text,
+      text: text,
       messageId: messaging.message.mid,
       timestamp: messaging.timestamp,
-      phoneLine: null
+      phoneLine: null,
+      mediaType: mediaType,
+      mediaUrl: mediaUrl,
+      storyUrl: storyUrl
     };
   } catch (err) {
     console.error("Error procesando webhook Instagram:", err);
