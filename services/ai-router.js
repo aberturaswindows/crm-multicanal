@@ -8,6 +8,26 @@ const DEPARTMENTS = {
 };
 
 /**
+ * Obtener la hora actual en Argentina (UTC-3)
+ */
+function getArgentinaTime() {
+  const now = new Date();
+  const argTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+  const hour = argTime.getHours();
+
+  let greeting;
+  if (hour >= 6 && hour < 13) {
+    greeting = "Buenos días";
+  } else if (hour >= 13 && hour < 20) {
+    greeting = "Buenas tardes";
+  } else {
+    greeting = "Buenas noches";
+  }
+
+  return { hour, greeting };
+}
+
+/**
  * Clasifica un mensaje y devuelve el departamento, confianza y razón
  */
 async function classifyMessage(messageText, conversationHistory = []) {
@@ -77,7 +97,11 @@ async function generateSuggestion(contact, messages) {
     email: "Email", telefono: "Teléfono"
   };
 
-  const prompt = `Sos un agente del área de ${dept.label} de NexoCRM "${process.env.COMPANY_NAME || "NexoCRM"}". El cliente ${contact.name} te contactó por ${channelLabels[contact.channel] || contact.channel}.
+  const { greeting } = getArgentinaTime();
+
+  const prompt = `Sos un agente del área de ${dept.label} de "${process.env.COMPANY_NAME || "NexoCRM"}". El cliente ${contact.name} te contactó por ${channelLabels[contact.channel] || contact.channel}.
+
+IMPORTANTE: La hora actual en Argentina es las ${new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" })}. Si saludás, usá "${greeting}".
 
 Tu tono debe ser profesional, empático y orientado a resolver. Si es un reclamo, mostrá comprensión. Si es una venta, sé entusiasta pero no agresivo.
 
@@ -102,34 +126,4 @@ Generá UNA respuesta breve (2-3 oraciones máximo) para el último mensaje del 
     return res.data.content?.[0]?.text || "No se pudo generar una sugerencia.";
   } catch (err) {
     console.error("Error generando sugerencia:", err.message);
-    return "Error al conectar con la IA. Intentá de nuevo.";
-  }
-}
-
-/**
- * Fallback: clasificación por keywords cuando no hay API key
- */
-function classifyByKeywords(text) {
-  const lower = text.toLowerCase();
-  const rules = {
-    ventas: ["precio", "cotización", "presupuesto", "comprar", "plan", "costo", "descuento", "oferta", "contratar", "producto", "catálogo", "promoción", "cuánto sale", "cuanto sale", "interesado"],
-    soporte: ["no funciona", "error", "problema", "técnico", "bug", "falla", "ayuda", "configurar", "instalar", "lento", "caído", "no puedo", "soporte", "no anda", "no carga"],
-    admin: ["factura", "pago", "cobro", "recibo", "cuit", "datos fiscales", "transferencia", "suscripción", "vencimiento", "comprobante"],
-    reclamos: ["reclamo", "queja", "insatisfecho", "mal servicio", "devolver", "reembolso", "devolución", "pésimo", "inaceptable", "denuncia", "enojado"],
-  };
-
-  let best = "ventas";
-  let bestCount = 0;
-  for (const [dept, keywords] of Object.entries(rules)) {
-    const count = keywords.filter(k => lower.includes(k)).length;
-    if (count > bestCount) { bestCount = count; best = dept; }
-  }
-
-  return {
-    department: best,
-    confidence: bestCount >= 3 ? "alta" : bestCount >= 1 ? "media" : "baja",
-    reason: bestCount > 0 ? "Clasificado por keywords (IA no disponible)" : "Sin keywords detectadas, asignado a ventas por defecto"
-  };
-}
-
-module.exports = { classifyMessage, generateSuggestion, DEPARTMENTS };
+    return "Error al
