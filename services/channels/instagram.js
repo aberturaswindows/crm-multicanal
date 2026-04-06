@@ -3,6 +3,31 @@ const axios = require("axios");
 const GRAPH_API = "https://graph.instagram.com/v21.0";
 
 /**
+ * Obtener nombre de usuario de Instagram por su ID
+ */
+async function getUserProfile(userId) {
+  const token = process.env.INSTAGRAM_TOKEN;
+  if (!token) return null;
+
+  try {
+    const res = await axios.get(`${GRAPH_API}/${userId}`, {
+      params: { fields: "name,username", access_token: token }
+    });
+    return res.data.name || res.data.username || null;
+  } catch (err) {
+    console.error("Error obteniendo perfil Instagram:", err.response?.data?.error?.message || err.message);
+    try {
+      const res2 = await axios.get(`${GRAPH_API}/${userId}`, {
+        params: { fields: "username", access_token: token }
+      });
+      return res2.data.username || null;
+    } catch (err2) {
+      return null;
+    }
+  }
+}
+
+/**
  * Enviar mensaje de Instagram
  */
 async function sendMessage(recipientId, text) {
@@ -40,7 +65,7 @@ function processWebhook(body) {
     return {
       channel: "instagram",
       channelId: messaging.sender.id,
-      senderName: messaging.sender.id, // Se resuelve después con la API
+      senderName: messaging.sender.id,
       text: messaging.message.text,
       messageId: messaging.message.mid,
       timestamp: messaging.timestamp,
@@ -52,4 +77,4 @@ function processWebhook(body) {
   }
 }
 
-module.exports = { sendMessage, processWebhook };
+module.exports = { sendMessage, processWebhook, getUserProfile };
