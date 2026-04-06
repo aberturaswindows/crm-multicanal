@@ -60,8 +60,8 @@ function processWebhook(body) {
     const entry = body.entry?.[0];
     const messaging = entry?.messaging?.[0];
 
- if (!messaging?.message?.text) return null;
-    if (messaging.sender.id === entry.id) return null;
+if (!messaging?.message?.text) return null;
+    if (messaging.message.is_echo) return null;
 
     return {
       channel: "instagram",
