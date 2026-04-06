@@ -46,8 +46,55 @@ const Badge = ({ type, data }) => {
   return React.createElement("span", {
     style: { fontSize: 10, padding: "2px 8px", borderRadius: 20, background: d.bg,
       color: type === "dept" ? d.color : d.textColor, fontWeight: 500, whiteSpace: "nowrap" }
-  }, type === "dept" ? `${d.icon} ${d.label}` : d.label);
+  }, type === "dept" ? d.icon + " " + d.label : d.label);
 };
+
+function renderMedia(m) {
+  var elements = [];
+
+  if (m.story_url) {
+    elements.push(
+      React.createElement("div", { key: "story", style: { marginBottom: 6, padding: 6, background: "#f0e6f6", borderRadius: 8, border: "1px solid #d9c4e8" } },
+        React.createElement("div", { style: { fontSize: 10, color: "#8854D0", fontWeight: 600, marginBottom: 4 } }, "Respuesta a tu historia"),
+        React.createElement("img", { src: m.story_url, style: { maxWidth: "100%", maxHeight: 150, borderRadius: 6, display: "block" }, onError: function(e) { e.target.style.display = "none"; } })
+      )
+    );
+  }
+
+  if (m.media_type === "image" && m.media_url) {
+    elements.push(
+      React.createElement("img", { key: "img", src: m.media_url, style: { maxWidth: "100%", maxHeight: 250, borderRadius: 8, display: "block", marginBottom: m.content && m.content !== "[Imagen]" ? 6 : 0, cursor: "pointer" }, onClick: function() { window.open(m.media_url, "_blank"); }, onError: function(e) { e.target.alt = "Imagen no disponible"; e.target.style.padding = "20px"; e.target.style.background = "#f5f5f5"; } })
+    );
+  }
+
+  if (m.media_type === "video" && m.media_url) {
+    elements.push(
+      React.createElement("video", { key: "vid", src: m.media_url, controls: true, style: { maxWidth: "100%", maxHeight: 250, borderRadius: 8, display: "block", marginBottom: m.content && m.content !== "[Video]" ? 6 : 0 } })
+    );
+  }
+
+  if (m.media_type === "audio" && m.media_url) {
+    elements.push(
+      React.createElement("audio", { key: "aud", src: m.media_url, controls: true, style: { width: "100%", marginBottom: m.content && m.content !== "[Audio]" ? 6 : 0 } })
+    );
+  }
+
+  if (m.content && m.content !== "[Imagen]" && m.content !== "[Video]" && m.content !== "[Audio]" && m.content !== "[Archivo]") {
+    elements.push(
+      React.createElement("span", { key: "txt" }, m.content)
+    );
+  } else if (m.media_type === "file" && m.media_url) {
+    elements.push(
+      React.createElement("a", { key: "file", href: m.media_url, target: "_blank", style: { color: "#185FA5", textDecoration: "underline", fontSize: 12 } }, "Descargar archivo")
+    );
+  } else if (!m.media_type && m.content) {
+    elements.push(
+      React.createElement("span", { key: "txt" }, m.content)
+    );
+  }
+
+  return elements;
+}
 
 function App() {
   const [contacts, setContacts] = useState([]);
@@ -68,382 +115,15 @@ function App() {
   const chatRef = useRef(null);
   const pollRef = useRef(null);
 
-  // Cargar datos iniciales
   useEffect(() => {
     loadContacts();
-    fetch(API + "/agents").then(r => r.json()).then(setAgents).catch(() => {});
-    fetch(API + "/phone-lines").then(r => r.json()).then(setPhoneLines).catch(() => {});
-    // Polling cada 5 segundos para nuevos mensajes
+    fetch(API + "/agents").then(function(r) { return r.json(); }).then(setAgents).catch(function() {});
+    fetch(API + "/phone-lines").then(function(r) { return r.json(); }).then(setPhoneLines).catch(function() {});
     pollRef.current = setInterval(function() { loadContacts(); }, 5000);
-    return () => clearInterval(pollRef.current);
+    return function() { clearInterval(pollRef.current); };
   }, []);
 
-  const loadContacts = () => {
-    let url = API + "/contacts?";
-    if (filterCh !== "all") url += `channel=${filterCh}&`;
-    if (filterDept !== "all") url += `department=${filterDept}&`;
-    fetch(url).then(r => r.json()).then(setContacts).catch(() => {});
-  };
-
-  useEffect(() => { loadContacts(); }, [filterCh, filterDept]);
-
-  useEffect(() => {
-    if (selected) {
-      fetch(API + `/contacts/${selected.id}/messages`).then(r => r.json()).then(msgs => {
-        setMessages(msgs);
-        setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100);
-      }).catch(() => {});
-      loadSuggestion(selected.id);
-    }
-  }, [selected?.id]);
-
-  useEffect(() => {
-    if (!selected) return;
-    const msgPoll = setInterval(() => {
-      fetch(API + "/contacts/" + selected.id + "/messages").then(r => r.json()).then(newMsgs => {
-        setMessages(prev => {
-          if (newMsgs.length !== prev.length) {
-            setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100);
-          }
-          return newMsgs;
-        });
-      }).catch(() => {});
-    }, 3000);
-    return () => clearInterval(msgPoll);
-  }, [selected?.id]);
-
-  useEffect(() => {
-    if (view === "routing") {
-      fetch(API + "/routing-log").then(r => r.json()).then(setRoutingLog).catch(() => {});
-    }
-    if (view === "metrics") {
-      fetch(API + "/metrics").then(r => r.json()).then(setMetrics).catch(() => {});
-    }
-  }, [view]);
-
-  const loadSuggestion = async (contactId) => {
-    setAiLoading(true);
-    setSuggestion("");
-    try {
-      const res = await fetch(API + `/contacts/${contactId}/suggestion`);
-      const data = await res.json();
-      setSuggestion(data.suggestion || "");
-    } catch { setSuggestion("Error de conexi\u00F3n."); }
-    setAiLoading(false);
-  };
-
-  const sendMsg = async () => {
-    if (!msgText.trim() || !selected) return;
-    try {
-      await fetch(API + `/contacts/${selected.id}/messages`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: msgText.trim() })
-      });
-      setMsgText("");
-      const msgs = await fetch(API + `/contacts/${selected.id}/messages`).then(r => r.json());
-      setMessages(msgs);
-      loadContacts();
-      setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, 100);
-      loadSuggestion(selected.id);
-    } catch (err) { console.error(err); }
-  };
-
-  const updateContact = async (id, updates) => {
-    try {
-      const res = await fetch(API + `/contacts/${id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates)
-      });
-      const updated = await res.json();
-      setSelected(updated);
-      loadContacts();
-      setShowReassign(false);
-    } catch (err) { console.error(err); }
-  };
-
-  const selectContact = (c) => {
-    setSelected(c);
-    setShowReassign(false);
-    setTab("info");
-  };
-
-  const formatTime = (ts) => {
-    if (!ts) return "";
-    const d = new Date(ts);
-    return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
-  };
-
-  const ch = selected ? CHANNELS[selected.channel] : null;
-  const dept = selected ? DEPARTMENTS[selected.department] : null;
-
-  // ---- RENDER ----
-  return React.createElement("div", { style: { width: "100%", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" } },
-
-    // TOP BAR
-    React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 20px", background: "#fff", borderBottom: "1px solid #e0e0dc", flexShrink: 0 } },
-      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
-        React.createElement("div", { style: { width: 34, height: 34, borderRadius: 8, background: "linear-gradient(135deg,#185FA5,#2E86DE)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14 } }, "N"),
-        React.createElement("div", null,
-          React.createElement("div", { style: { fontSize: 15, fontWeight: 600, color: "#111" } }, "NexoCRM"),
-          React.createElement("div", { style: { fontSize: 11, color: "#999" } }, "Todos los canales \u00B7 IA routing")
-        )
-      ),
-      React.createElement("div", { style: { display: "flex", gap: 4 } },
-        ["inbox", "routing", "metrics"].map(v =>
-          React.createElement("button", { key: v, onClick: () => setView(v), style: { padding: "6px 14px", fontSize: 12, borderRadius: 8, border: view === v ? "1px solid #185FA5" : "1px solid #ddd", background: view === v ? "#E6F1FB" : "#fff", color: view === v ? "#185FA5" : "#888", cursor: "pointer", fontWeight: view === v ? 600 : 400 } },
-            v === "inbox" ? "Bandeja" : v === "routing" ? "Routing IA" : "M\u00E9tricas"
-          )
-        )
-      )
-    ),
-
-    // MAIN CONTENT
-    view === "inbox" ?
-      React.createElement("div", { style: { flex: 1, display: "grid", gridTemplateColumns: "280px 1fr 290px", overflow: "hidden" } },
-
-        // SIDEBAR
-        React.createElement("div", { style: { borderRight: "1px solid #e2e2e0", background: "#fff", display: "flex", flexDirection: "column", overflow: "hidden" } },
-          React.createElement("div", { style: { padding: "12px 14px", borderBottom: "1px solid #e2e2e0" } },
-            React.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: "#999", letterSpacing: "0.05em", marginBottom: 6 } }, "CANALES"),
-            React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 } },
-              React.createElement("button", { onClick: () => setFilterCh("all"), style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, cursor: "pointer", border: filterCh === "all" ? "1px solid #999" : "1px solid #ddd", background: filterCh === "all" ? "#f0f0ee" : "#fff", color: filterCh === "all" ? "#111" : "#888" } }, "Todos"),
-              Object.entries(CHANNELS).map(([k, v]) =>
-                React.createElement("button", { key: k, onClick: () => setFilterCh(k), style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, cursor: "pointer", border: filterCh === k ? `1px solid ${v.color}` : "1px solid #ddd", background: filterCh === k ? v.bg : "#fff", color: filterCh === k ? v.textColor : "#888" } }, v.icon)
-              )
-            ),
-            React.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: "#999", letterSpacing: "0.05em", marginBottom: 6 } }, "\u00C1REAS"),
-            React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" } },
-              React.createElement("button", { onClick: () => setFilterDept("all"), style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, cursor: "pointer", border: filterDept === "all" ? "1px solid #999" : "1px solid #ddd", background: filterDept === "all" ? "#f0f0ee" : "#fff", color: filterDept === "all" ? "#111" : "#888" } }, "Todos"),
-              Object.entries(DEPARTMENTS).map(([k, d]) =>
-                React.createElement("button", { key: k, onClick: () => setFilterDept(k), style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, cursor: "pointer", border: filterDept === k ? `1px solid ${d.color}` : "1px solid #ddd", background: filterDept === k ? d.bg : "#fff", color: filterDept === k ? d.color : "#888" } }, d.icon)
-              )
-            )
-          ),
-          React.createElement("div", { style: { flex: 1, overflowY: "auto" } },
-            contacts.map(c => {
-              const chData = CHANNELS[c.channel] || {};
-              const deptData = DEPARTMENTS[c.department] || {};
-              return React.createElement("div", { key: c.id, onClick: () => selectContact(c), style: { padding: "12px 14px", cursor: "pointer", borderBottom: "1px solid #f0f0ee", background: selected?.id === c.id ? "#f5f5f3" : "#fff", animation: "slideIn .3s ease" } },
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                  React.createElement("div", { style: { width: 36, height: 36, borderRadius: "50%", background: chData.bg || "#eee", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "#555", flexShrink: 0, position: "relative" } },
-                    (c.name || "?").split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase(),
-                    React.createElement("div", { style: { position: "absolute", bottom: -1, right: -1, width: 12, height: 12, borderRadius: "50%", background: chData.color || "#999", border: "2px solid #fff" } })
-                  ),
-                  React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                    React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } },
-                      React.createElement("span", { style: { fontSize: 13, fontWeight: 500, color: "#111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, c.name),
-                      React.createElement("span", { style: { fontSize: 10, color: "#bbb", flexShrink: 0 } }, formatTime(c.last_message_at))
-                    ),
-                    React.createElement("div", { style: { fontSize: 11, color: "#999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 } }, c.last_message || "Sin mensajes")
-                  ),
-                  c.unread > 0 && React.createElement("div", { style: { background: "#EB3B5A", color: "#fff", fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 10, flexShrink: 0 } }, c.unread)
-                ),
-                React.createElement("div", { style: { display: "flex", gap: 4, marginTop: 6 } },
-                  React.createElement(Badge, { type: "dept", data: c.department }),
-                  React.createElement(Badge, { type: "ch", data: c.channel })
-                )
-              );
-            }),
-            contacts.length === 0 && React.createElement("div", { style: { padding: 20, textAlign: "center", color: "#bbb", fontSize: 13 } }, "No hay contactos")
-          )
-        ),
-
-        // CHAT AREA
-        React.createElement("div", { style: { display: "flex", flexDirection: "column", overflow: "hidden", background: "#fafaf8" } },
-          selected ?
-            React.createElement(React.Fragment, null,
-              // Chat header
-              React.createElement("div", { style: { padding: "12px 16px", borderBottom: "1px solid #e2e2e0", background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between" } },
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
-                  React.createElement("div", { style: { width: 36, height: 36, borderRadius: "50%", background: ch?.bg || "#eee", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "#555" } }, (selected.name || "?").split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase()),
-                  React.createElement("div", null,
-                    React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: "#111" } }, selected.name),
-                    React.createElement("div", { style: { display: "flex", gap: 4, marginTop: 2 } },
-                      React.createElement(Badge, { type: "ch", data: selected.channel }),
-                      React.createElement(Badge, { type: "dept", data: selected.department })
-                    )
-                  )
-                )
-              ),
-              // AI routing banner
-              React.createElement("div", { style: { margin: "8px 16px", padding: "10px 14px", background: "#fff", border: "1px solid #e2e2e0", borderRadius: 10, fontSize: 12 } },
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 6 } },
-                  React.createElement("div", { style: { width: 7, height: 7, borderRadius: "50%", background: "#25D366", animation: "pulse 2s infinite" } }),
-                  React.createElement("span", { style: { fontSize: 11, fontWeight: 600, color: "#555" } }, "ROUTING IA")
-                ),
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
-                  React.createElement("span", { style: { color: "#333" } }, "Derivado a"),
-                  dept && React.createElement("span", { style: { background: dept.bg, color: dept.color, padding: "3px 10px", borderRadius: 20, fontWeight: 600, fontSize: 11 } }, `${dept.icon} ${dept.label}`),
-                  React.createElement("span", { style: { fontSize: 11, color: "#999" } }, `Confianza: ${selected.ai_confidence || "pending"}`)
-                ),
-                React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 8 } },
-                  React.createElement("button", { onClick: () => setShowReassign(!showReassign), style: { padding: "5px 12px", fontSize: 11, borderRadius: 6, border: "1px solid #ddd", background: "#f5f5f3", color: "#666", cursor: "pointer" } }, "\u21BB Reasignar")
-                ),
-                showReassign && React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: "1px solid #eee" } },
-                  Object.entries(DEPARTMENTS).map(([k, d]) =>
-                    React.createElement("button", { key: k, onClick: () => updateContact(selected.id, { department: k, _old_department: selected.department }), style: { padding: "5px 12px", fontSize: 11, borderRadius: 20, border: selected.department === k ? `1px solid ${d.color}` : "1px solid #ddd", background: selected.department === k ? d.bg : "#fff", color: selected.department === k ? d.color : "#888", cursor: "pointer", fontWeight: selected.department === k ? 600 : 400 } }, `${d.icon} ${d.label}`)
-                  )
-                )
-              ),
-              // Messages
-              React.createElement("div", { ref: chatRef, style: { flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 } },
-                messages.map((m, i) =>
-                  React.createElement("div", { key: m.id || i, style: { alignSelf: m.direction === "outgoing" ? "flex-end" : "flex-start", maxWidth: "78%", animation: "slideIn .25s ease" } },
-                    React.createElement("div", { style: { padding: "9px 14px", borderRadius: m.direction === "outgoing" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", background: m.direction === "outgoing" ? "#E6F1FB" : "#fff", color: m.direction === "outgoing" ? "#042C53" : "#111", fontSize: 13, lineHeight: 1.55, border: m.direction === "incoming" ? "1px solid #e8e8e6" : "none" } }, m.content),
-                    React.createElement("div", { style: { fontSize: 10, color: "#bbb", padding: "2px 4px", textAlign: m.direction === "outgoing" ? "right" : "left" } }, formatTime(m.created_at))
-                  )
-                )
-              ),
-              // Input area
-              React.createElement("div", { style: { padding: "10px 16px", borderTop: "1px solid #e2e2e0", background: "#fff" } },
-                (suggestion || aiLoading) && React.createElement("div", { style: { marginBottom: 8, padding: "8px 12px", background: "#f9f9f7", border: "1px solid #e5e5e3", borderRadius: 8, fontSize: 12, display: "flex", gap: 8, alignItems: "flex-start" } },
-                  React.createElement("div", { style: { width: 6, height: 6, borderRadius: "50%", background: aiLoading ? "#999" : "#25D366", marginTop: 5, flexShrink: 0, animation: aiLoading ? "dotPulse 1s infinite" : "none" } }),
-                  React.createElement("div", { style: { flex: 1, color: aiLoading ? "#999" : "#444" } }, aiLoading ? "Generando sugerencia..." : suggestion),
-                  !aiLoading && suggestion && React.createElement("button", { onClick: () => setMsgText(suggestion), style: { fontSize: 10, padding: "3px 8px", borderRadius: 6, border: "1px solid #B5D4F4", background: "#E6F1FB", color: "#185FA5", cursor: "pointer", flexShrink: 0, fontWeight: 500 } }, "Usar"),
-                  !aiLoading && React.createElement("button", { onClick: () => loadSuggestion(selected.id), style: { fontSize: 10, padding: "3px 8px", borderRadius: 6, border: "1px solid #ddd", background: "#f5f5f3", color: "#888", cursor: "pointer", flexShrink: 0 } }, "\u21BB")
-                ),
-                React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "flex-end" } },
-                  React.createElement("textarea", { value: msgText, onChange: e => setMsgText(e.target.value), onKeyDown: e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } }, placeholder: "Escribir mensaje...", rows: 1, style: { flex: 1, resize: "none", border: "1px solid #ddd", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontFamily: "inherit", color: "#111", outline: "none", minHeight: 40, maxHeight: 100 } }),
-                  React.createElement("button", { onClick: sendMsg, style: { background: "#185FA5", color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0 } }, "Enviar")
-                )
-              )
-            )
-          : React.createElement("div", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: 14 } }, "Seleccion\u00E1 un contacto")
-        ),
-
-        // RIGHT PANEL
-        React.createElement("div", { style: { borderLeft: "1px solid #e2e2e0", background: "#fff", display: "flex", flexDirection: "column", overflow: "hidden" } },
-          React.createElement("div", { style: { display: "flex", borderBottom: "1px solid #e2e2e0" } },
-            ["info", "agents"].map(t =>
-              React.createElement("button", { key: t, onClick: () => setTab(t), style: { flex: 1, padding: "10px 8px", fontSize: 12, textAlign: "center", cursor: "pointer", color: tab === t ? "#111" : "#999", background: "none", border: "none", borderBottom: `2px solid ${tab === t ? "#185FA5" : "transparent"}`, fontWeight: tab === t ? 600 : 400 } },
-                t === "info" ? "Cliente" : "Equipo"
-              )
-            )
-          ),
-          React.createElement("div", { style: { flex: 1, overflowY: "auto", padding: 16 } },
-            tab === "info" && selected && React.createElement("div", { style: { animation: "slideIn .2s ease" } },
-              React.createElement("div", { style: { textAlign: "center", marginBottom: 16 } },
-                React.createElement("div", { style: { width: 52, height: 52, borderRadius: "50%", background: ch?.bg || "#eee", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 600, color: "#555", margin: "0 auto 8px" } }, (selected.name || "?").split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase()),
-                React.createElement("div", { style: { fontSize: 15, fontWeight: 600, color: "#111" } }, selected.name),
-                React.createElement("div", { style: { display: "flex", justifyContent: "center", gap: 4, marginTop: 6 } },
-                  ["lead", "cliente", "cerrado"].map(s =>
-                    React.createElement("button", { key: s, onClick: () => updateContact(selected.id, { status: s }), style: { fontSize: 11, padding: "3px 10px", borderRadius: 20, cursor: "pointer", border: selected.status === s ? `1px solid ${s === "lead" ? "#FAC775" : s === "cliente" ? "#C0DD97" : "#ccc"}` : "1px solid #ddd", background: selected.status === s ? (s === "lead" ? "#FAEEDA" : s === "cliente" ? "#EAF3DE" : "#f0f0ee") : "#fff", color: selected.status === s ? (s === "lead" ? "#854F0B" : s === "cliente" ? "#3B6D11" : "#888") : "#888" } }, s.charAt(0).toUpperCase() + s.slice(1))
-                  )
-                )
-              ),
-              React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: "#aaa", letterSpacing: "0.05em", marginBottom: 6 } }, "INFORMACI\u00D3N"),
-              [["Email", selected.email], ["Tel\u00E9fono", selected.phone], ["Canal", CHANNELS[selected.channel]?.label], ["\u00C1rea", DEPARTMENTS[selected.department]?.label], ["Origen", selected.origin], ["Creado", selected.created_at?.substring(0, 10)]].map(([k, v]) =>
-                React.createElement("div", { key: k, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0ee", fontSize: 12 } },
-                  React.createElement("span", { style: { color: "#888" } }, k),
-                  React.createElement("span", { style: { color: "#111", fontWeight: 500, textAlign: "right", maxWidth: "60%", overflow: "hidden", textOverflow: "ellipsis" } }, v || "-")
-                )
-              )
-            ),
-            tab === "agents" && React.createElement("div", { style: { animation: "slideIn .2s ease" } },
-              Object.entries(DEPARTMENTS).map(([k, d]) =>
-                React.createElement("div", { key: k, style: { marginBottom: 18 } },
-                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 8 } },
-                    React.createElement("span", { style: { fontSize: 16 } }, d.icon),
-                    React.createElement("span", { style: { fontSize: 13, fontWeight: 600, color: "#111" } }, d.label)
-                  ),
-                  agents.filter(a => a.department === k).map(a =>
-                    React.createElement("div", { key: a.id, style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: "1px solid #f0f0ee" } },
-                      React.createElement("div", { style: { width: 30, height: 30, borderRadius: "50%", background: d.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: d.color } }, a.name.split(" ").map(w => w[0]).join("")),
-                      React.createElement("div", { style: { flex: 1 } },
-                        React.createElement("div", { style: { fontSize: 13, fontWeight: 500, color: "#111" } }, a.name)
-                      ),
-                      React.createElement("div", { style: { width: 8, height: 8, borderRadius: "50%", background: "#25D366" } })
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    : view === "routing" ?
-      React.createElement("div", { style: { flex: 1, padding: 24, overflowY: "auto" } },
-        React.createElement("div", { style: { maxWidth: 800, margin: "0 auto" } },
-          React.createElement("h2", { style: { fontSize: 18, fontWeight: 600, color: "#111", marginBottom: 4 } }, "Motor de Routing IA"),
-          React.createElement("p", { style: { fontSize: 13, color: "#888", marginBottom: 20 } }, "Clasificaci\u00F3n autom\u00E1tica y derivaci\u00F3n a \u00E1reas"),
-          React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 } },
-            Object.entries(DEPARTMENTS).map(([k, d]) => {
-              const count = contacts.filter(c => c.department === k).length;
-              return React.createElement("div", { key: k, style: { background: "#fff", borderRadius: 12, border: "1px solid #e2e2e0", padding: 16 } },
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
-                  React.createElement("span", { style: { fontSize: 20 } }, d.icon),
-                  React.createElement("div", null,
-                    React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: "#111" } }, d.label),
-                    React.createElement("div", { style: { fontSize: 11, color: "#888" } }, `${count} conv. activas`)
-                  )
-                ),
-                React.createElement("div", { style: { fontSize: 11, color: "#aaa", marginBottom: 6 } }, "Agentes:"),
-                React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
-                  agents.filter(a => a.department === k).map(a =>
-                    React.createElement("span", { key: a.id, style: { display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, background: d.bg, fontSize: 11, color: d.color, fontWeight: 500 } },
-                      React.createElement("div", { style: { width: 6, height: 6, borderRadius: "50%", background: "#25D366" } }),
-                      a.name
-                    )
-                  )
-                )
-              );
-            })
-          ),
-          routingLog.length > 0 && React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: "1px solid #e2e2e0", padding: 16 } },
-            React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#111", marginBottom: 10 } }, "Historial de reasignaciones"),
-            routingLog.map((log, i) =>
-              React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #f0f0ee", fontSize: 12, flexWrap: "wrap" } },
-                React.createElement("span", { style: { color: "#888", fontSize: 11 } }, formatTime(log.created_at)),
-                React.createElement("span", { style: { fontWeight: 500, color: "#333" } }, log.contact_name),
-                log.from_department && React.createElement(Badge, { type: "dept", data: log.from_department }),
-                React.createElement("span", { style: { color: "#ccc" } }, "\u2192"),
-                React.createElement(Badge, { type: "dept", data: log.to_department }),
-                React.createElement("span", { style: { fontSize: 10, color: "#bbb" } }, `(${log.routed_by})`)
-              )
-            )
-          )
-        )
-      )
-    : /* METRICS VIEW */
-      React.createElement("div", { style: { flex: 1, padding: 24, overflowY: "auto" } },
-        React.createElement("div", { style: { maxWidth: 800, margin: "0 auto" } },
-          React.createElement("h2", { style: { fontSize: 18, fontWeight: 600, color: "#111", marginBottom: 20 } }, "M\u00E9tricas"),
-          metrics && React.createElement(React.Fragment, null,
-            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 } },
-              [["Mensajes", metrics.totalMessages], ["Contactos", metrics.totalContacts], ["Conversaciones", metrics.totalConversations]].map(([l, v]) =>
-                React.createElement("div", { key: l, style: { background: "#fff", borderRadius: 12, border: "1px solid #e2e2e0", padding: 16 } },
-                  React.createElement("div", { style: { fontSize: 28, fontWeight: 600, color: "#111" } }, v),
-                  React.createElement("div", { style: { fontSize: 12, color: "#888", marginTop: 2 } }, l)
-                )
-              )
-            ),
-            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } },
-              React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: "1px solid #e2e2e0", padding: 16 } },
-                React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#111", marginBottom: 12 } }, "Por canal"),
-                (metrics.byChannel || []).map(c =>
-                  React.createElement("div", { key: c.channel, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0ee", fontSize: 12 } },
-                    React.createElement("span", { style: { color: "#888" } }, CHANNELS[c.channel]?.label || c.channel),
-                    React.createElement("span", { style: { fontWeight: 600, color: "#111" } }, c.count)
-                  )
-                )
-              ),
-              React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: "1px solid #e2e2e0", padding: 16 } },
-                React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#111", marginBottom: 12 } }, "Por \u00E1rea"),
-                (metrics.byDepartment || []).map(d =>
-                  React.createElement("div", { key: d.department, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0ee", fontSize: 12 } },
-                    React.createElement("span", { style: { color: "#888" } }, DEPARTMENTS[d.department]?.icon + " " + (DEPARTMENTS[d.department]?.label || d.department)),
-                    React.createElement("span", { style: { fontWeight: 600, color: "#111" } }, d.count)
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-  );
-}
-
-ReactDOM.render(React.createElement(App), document.getElementById("root"));
-</script>
-</body>
-</html>
+  const loadContacts = function() {
+    var url = API + "/contacts?";
+    if (filterCh !== "all") url += "channel=" + filterCh + "&";
+    if (fil
