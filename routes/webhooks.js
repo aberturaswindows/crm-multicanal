@@ -37,14 +37,27 @@ async function handleIncomingMessage(normalized) {
     }
 
     db.prepare(
-      "INSERT INTO messages (contact_id, direction, content, channel, channel_message_id) VALUES (?, 'incoming', ?, ?, ?)"
-    ).run(contact.id, normalized.text, normalized.channel, normalized.messageId);
+      "INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?)"
+    ).run(
+      contact.id,
+      normalized.text,
+      normalized.channel,
+      normalized.messageId,
+      normalized.mediaType || null,
+      normalized.mediaUrl || null,
+      normalized.storyUrl || null
+    );
+
+    var textForAi = normalized.text || "";
+    if (normalized.storyUrl) {
+      textForAi = "[Respuesta a historia de Instagram] " + textForAi;
+    }
 
     var recentMessages = db.prepare(
       "SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT 10"
     ).all(contact.id).reverse();
 
-    var classification = await classifyMessage(normalized.text, recentMessages);
+    var classification = await classifyMessage(textForAi, recentMessages);
 
     if (classification.department !== contact.department) {
       db.prepare("UPDATE contacts SET department = ?, ai_confidence = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
@@ -55,7 +68,7 @@ async function handleIncomingMessage(normalized) {
       ).run(contact.id, contact.department, classification.department, classification.reason, classification.confidence);
     }
 
-    console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + normalized.text.substring(0, 50) + " -> " + classification.department + " (" + classification.confidence + ")");
+    console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + (normalized.text || "").substring(0, 50) + " -> " + classification.department + " (" + classification.confidence + ")");
 
     return { contact: contact, classification: classification };
 
@@ -141,15 +154,11 @@ router.post("/phone", async function(req, res) {
       text: summary || "[Llamada registrada]",
       messageId: null,
       timestamp: Date.now(),
-      phoneLine: phoneLine || 3
+      phoneLine: phoneLine || 3,
+      mediaType: null,
+      mediaUrl: null,
+      storyUrl: null
     };
 
     var result = await handleIncomingMessage(normalized);
-    res.json({ success: true, contact: result.contact, classification: result.classification });
-  } catch (err) {
-    console.error("Error registrando llamada:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
+    re
