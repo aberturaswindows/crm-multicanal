@@ -74,7 +74,7 @@ function App() {
     fetch(API + "/agents").then(r => r.json()).then(setAgents).catch(() => {});
     fetch(API + "/phone-lines").then(r => r.json()).then(setPhoneLines).catch(() => {});
     // Polling cada 5 segundos para nuevos mensajes
-    pollRef.current = setInterval(loadContacts, 5000);
+    pollRef.current = setInterval(function() { loadContacts(); }, 5000);
     return () => clearInterval(pollRef.current);
   }, []);
 
