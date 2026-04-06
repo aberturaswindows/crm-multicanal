@@ -40,6 +40,14 @@ async function handleIncomingMessage(normalized) {
       contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(result.lastInsertRowid);
     }
 
+    // 2b. Si el contacto existe pero el nombre es un ID numérico largo, actualizar
+    if (contact && normalized.senderName && normalized.senderName !== contact.name
+        && contact.name.match(/^\d{10,}$/)) {
+      db.prepare("UPDATE contacts SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .run(normalized.senderName, contact.id);
+      contact.name = normalized.senderName;
+    }
+
     // 3. Guardar mensaje
     db.prepare(`
       INSERT INTO messages (contact_id, direction, content, channel, channel_message_id)
@@ -93,73 +101,4 @@ router.get("/meta", (req, res) => {
 });
 
 // Recepción de mensajes de Meta
-router.post("/meta", async (req, res) => {
-  // Responder 200 inmediatamente (Meta requiere respuesta rápida)
-  res.sendStatus(200);
-
-  try {
-    const body = req.body;
-    const object = body.object;
-
-    let normalized = null;
-
-    if (object === "whatsapp_business_account") {
-      normalized = whatsapp.processWebhook(body);
-    } else if (object === "instagram") {
-      normalized = instagram.processWebhook(body);
-    } else if (object === "page") {
-      normalized = facebook.processWebhook(body);
-    }
-
-    if (normalized) {
-      await handleIncomingMessage(normalized);
-    }
-  } catch (err) {
-    console.error("Error en webhook Meta:", err);
-  }
-});
-
-// ============================================
-// WEBHOOK: Email (SendGrid Inbound Parse)
-// ============================================
-
-router.post("/email", async (req, res) => {
-  res.sendStatus(200);
-
-  try {
-    const normalized = email.processWebhook(req.body);
-    if (normalized) {
-      await handleIncomingMessage(normalized);
-    }
-  } catch (err) {
-    console.error("Error en webhook Email:", err);
-  }
-});
-
-// ============================================
-// WEBHOOK: Teléfono (registro manual desde el CRM)
-// ============================================
-
-router.post("/phone", async (req, res) => {
-  try {
-    const { callerName, callerPhone, phoneLine, summary } = req.body;
-    const normalized = {
-      channel: "telefono",
-      channelId: callerPhone || `phone-${Date.now()}`,
-      senderName: callerName || "Llamada entrante",
-      senderPhone: callerPhone,
-      text: summary || "[Llamada registrada]",
-      messageId: null,
-      timestamp: Date.now(),
-      phoneLine: phoneLine || 3,
-    };
-
-    const result = await handleIncomingMessage(normalized);
-    res.json({ success: true, contact: result.contact, classification: result.classification });
-  } catch (err) {
-    console.error("Error registrando llamada:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
+router.post("/meta", asy
