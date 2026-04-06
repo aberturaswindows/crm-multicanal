@@ -1,6 +1,6 @@
 const axios = require("axios");
 
-const GRAPH_API = "https://graph.facebook.com/v19.0";
+const GRAPH_API = "https://graph.instagram.com/v21.0";
 
 /**
  * Enviar mensaje de Instagram
