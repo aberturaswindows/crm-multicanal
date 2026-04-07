@@ -80,3 +80,25 @@ CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_department ON contacts(department);
 CREATE INDEX IF NOT EXISTS idx_contacts_channel ON contacts(channel);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+-- Tabla de usuarios del CRM
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  password TEXT NOT NULL,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'agent' CHECK(role IN ('admin','agent')),
+  department TEXT CHECK(department IN ('ventas','soporte','admin','reclamos')),
+  is_active INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Usuarios iniciales
+INSERT OR IGNORE INTO users (username, password, name, role, department) VALUES
+  ('federico', 'windows2026', 'Federico Soriano', 'admin', NULL),
+  ('juanmanuel', 'windows2026', 'Juan Manuel Soriano', 'admin', NULL),
+  ('manuel', 'windows2026', 'Manuel Soriano', 'admin', NULL),
+  ('camila', 'windows2026', 'Camila Soriano', 'admin', NULL),
+  ('gonzalo', 'windows2026', 'Gonzalo Bertaina', 'agent', 'soporte'),
+  ('anabel', 'windows2026', 'Anabel Rios', 'agent', 'soporte'),
+  ('julia', 'windows2026', 'Julia Cejas', 'agent', 'admin'),
+  ('soledad', 'windows2026', 'Soledad Galindo', 'agent', 'ventas');
