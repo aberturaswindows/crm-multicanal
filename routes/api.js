@@ -26,16 +26,16 @@ router.get("/users", function(req, res) {
 
 router.put("/users/:id", function(req, res) {
   var db = getDb();
-  var fields = [];
+  var updates = [];
   var values = [];
-  if (req.body.password) { fields.push("password = ?"); values.push(req.body.password); }
-  if (req.body.name) { fields.push("name = ?"); values.push(req.body.name); }
-  if (req.body.role) { fields.push("role = ?"); values.push(req.body.role); }
-  if (req.body.department !== undefined) { fields.push("department = ?"); values.push(req.body.department); }
-  if (req.body.is_active !== undefined) { fields.push("is_active = ?"); values.push(req.body.is_active); }
-  if (fields.length === 0) return res.status(400).json({ error: "Nada que actualizar" });
+  if (req.body.password) { updates.push("password = ?"); values.push(req.body.password); }
+  if (req.body.name) { updates.push("name = ?"); values.push(req.body.name); }
+  if (req.body.role) { updates.push("role = ?"); values.push(req.body.role); }
+  if (req.body.department !== undefined) { updates.push("department = ?"); values.push(req.body.department); }
+  if (req.body.is_active !== undefined) { updates.push("is_active = ?"); values.push(req.body.is_active); }
+  if (updates.length === 0) return res.status(400).json({ error: "Nada que actualizar" });
   values.push(req.params.id);
-  db.prepare("UPDATE users SET " + fields.join(", ") + " WHERE id = ?").run.apply(null, values);
+  db.prepare("UPDATE users SET " + updates.join(", ") + " WHERE id = ?").run(values);
   var updated = db.prepare("SELECT id, username, name, role, department, is_active FROM users WHERE id = ?").get(req.params.id);
   res.json(updated);
 });
@@ -51,7 +51,8 @@ router.get("/contacts", function(req, res) {
   if (department && department !== "all") { query += " AND c.department = ?"; params.push(department); }
   if (status && status !== "all") { query += " AND c.status = ?"; params.push(status); }
   query += " ORDER BY last_message_at DESC NULLS LAST";
-  var contacts = db.prepare(query).all.apply(db.prepare(query), params);
+  var stmt = db.prepare(query);
+  var contacts = params.length > 0 ? stmt.all.apply(stmt, params) : stmt.all();
   res.json(contacts);
 });
 
@@ -64,19 +65,19 @@ router.get("/contacts/:id", function(req, res) {
 
 router.put("/contacts/:id", function(req, res) {
   var db = getDb();
-  var fields = [];
+  var updates = [];
   var values = [];
-  if (req.body.name !== undefined) { fields.push("name = ?"); values.push(req.body.name); }
-  if (req.body.email !== undefined) { fields.push("email = ?"); values.push(req.body.email); }
-  if (req.body.phone !== undefined) { fields.push("phone = ?"); values.push(req.body.phone); }
-  if (req.body.department !== undefined) { fields.push("department = ?"); values.push(req.body.department); }
-  if (req.body.status !== undefined) { fields.push("status = ?"); values.push(req.body.status); }
-  if (req.body.notes !== undefined) { fields.push("notes = ?"); values.push(req.body.notes); }
-  if (req.body.assigned_agent !== undefined) { fields.push("assigned_agent = ?"); values.push(req.body.assigned_agent); }
-  if (fields.length === 0) return res.status(400).json({ error: "Nada que actualizar" });
-  fields.push("updated_at = CURRENT_TIMESTAMP");
+  if (req.body.name !== undefined) { updates.push("name = ?"); values.push(req.body.name); }
+  if (req.body.email !== undefined) { updates.push("email = ?"); values.push(req.body.email); }
+  if (req.body.phone !== undefined) { updates.push("phone = ?"); values.push(req.body.phone); }
+  if (req.body.department !== undefined) { updates.push("department = ?"); values.push(req.body.department); }
+  if (req.body.status !== undefined) { updates.push("status = ?"); values.push(req.body.status); }
+  if (req.body.notes !== undefined) { updates.push("notes = ?"); values.push(req.body.notes); }
+  if (req.body.assigned_agent !== undefined) { updates.push("assigned_agent = ?"); values.push(req.body.assigned_agent); }
+  if (updates.length === 0) return res.status(400).json({ error: "Nada que actualizar" });
+  updates.push("updated_at = CURRENT_TIMESTAMP");
   values.push(req.params.id);
-  db.prepare("UPDATE contacts SET " + fields.join(", ") + " WHERE id = ?").run.apply(null, values);
+  db.prepare("UPDATE contacts SET " + updates.join(", ") + " WHERE id = ?").run(values);
   if (req.body.department !== undefined) {
     db.prepare("INSERT INTO routing_log (contact_id, from_department, to_department, reason, routed_by) VALUES (?, ?, ?, ?, 'manual')").run(req.params.id, req.body._old_department || "unknown", req.body.department, "Reasignacion manual");
   }
