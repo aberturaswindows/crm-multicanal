@@ -16,6 +16,12 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:#EEEEE9}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes dotPulse{0%,100%{opacity:.3}50%{opacity:1}}
+.switch{position:relative;width:44px;height:24px;display:inline-block}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:.3s}
+.switch .slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}
+.switch input:checked+.slider{background:#25D366}
+.switch input:checked+.slider:before{transform:translateX(20px)}
 </style>
 </head>
 <body>
@@ -79,6 +85,7 @@ function App(){
   var nfn=useState("");var nfName=nfn[0];var setNfName=nfn[1];
   var nfr=useState("agent");var nfRole=nfr[0];var setNfRole=nfr[1];
   var nfd=useState("ventas");var nfDept=nfd[0];var setNfDept=nfd[1];
+  var ars=useState([]);var autoReply=ars[0];var setAutoReply=ars[1];
 
   var loggedIn=!!user;
 
@@ -109,10 +116,15 @@ function App(){
     fetch(API+"/users").then(function(r){return r.json()}).then(setUsersList).catch(function(){})
   };
 
+  var loadAutoReply=function(){
+    fetch(API+"/auto-reply").then(function(r){return r.json()}).then(setAutoReply).catch(function(){})
+  };
+
   useEffect(function(){
     if(!user)return;
     loadContacts();
     loadUsers();
+    loadAutoReply();
     fetch(API+"/agents").then(function(r){return r.json()}).then(setAgents).catch(function(){});
     pollRef.current=setInterval(function(){loadContacts()},5000);
     return function(){clearInterval(pollRef.current)}
@@ -141,7 +153,7 @@ function App(){
 
   useEffect(function(){
     if(!user)return;
-    if(view==="routing"){fetch(API+"/routing-log").then(function(r){return r.json()}).then(setRoutingLog).catch(function(){})}
+    if(view==="routing"){fetch(API+"/routing-log").then(function(r){return r.json()}).then(setRoutingLog).catch(function(){});loadAutoReply()}
     if(view==="metrics"){fetch(API+"/metrics").then(function(r){return r.json()}).then(setMetrics).catch(function(){})}
     if(view==="users"){loadUsers()}
   },[view]);
@@ -171,6 +183,11 @@ function App(){
     var newState=u.is_active?0:1;
     var msg=u.is_active?"Desactivar a "+u.name+"? No podra iniciar sesion.":"Activar a "+u.name+"?";
     if(confirm(msg)){fetch(API+"/users/"+u.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({is_active:newState})}).then(function(r){return r.json()}).then(function(){loadUsers()}).catch(function(){alert("Error al actualizar")})}
+  };
+
+  var toggleAutoReply=function(channel,currentEnabled){
+    var newState=currentEnabled?0:1;
+    fetch(API+"/auto-reply/"+channel,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:newState})}).then(function(r){return r.json()}).then(function(){loadAutoReply()}).catch(function(){alert("Error al actualizar")})
   };
 
   var ch=selected?CHANNELS[selected.channel]:null;
@@ -231,7 +248,33 @@ function App(){
             tab==="agents"&&React.createElement("div",{style:{animation:"slideIn .2s ease"}},usersList.filter(function(u){return u.role==="admin"&&u.is_active}).length>0&&React.createElement("div",{style:{marginBottom:18}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:8}},React.createElement("span",{style:{fontSize:16}},"\u2B50"),React.createElement("span",{style:{fontSize:13,fontWeight:600,color:"#111"}},"Administradores")),usersList.filter(function(u){return u.role==="admin"&&u.is_active}).map(function(u){return React.createElement("div",{key:u.id,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #f0f0ee"}},React.createElement("div",{style:{width:30,height:30,borderRadius:"50%",background:"#F3EEFB",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:"#8854D0"}},getInitials(u.name)),React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:13,fontWeight:500,color:"#111"}},u.name),React.createElement("div",{style:{fontSize:10,color:"#888"}},"@"+u.username)),React.createElement("div",{style:{width:8,height:8,borderRadius:"50%",background:"#25D366"}}))})),Object.entries(DEPARTMENTS).map(function(entry){var k=entry[0];var d=entry[1];var deptUsers=usersList.filter(function(u){return u.department===k&&u.is_active&&u.role!=="admin"});return React.createElement("div",{key:k,style:{marginBottom:18}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:8}},React.createElement("span",{style:{fontSize:16}},d.icon),React.createElement("span",{style:{fontSize:13,fontWeight:600,color:"#111"}},d.label),React.createElement("span",{style:{fontSize:11,color:"#bbb",marginLeft:4}},deptUsers.length+" usuarios")),deptUsers.length>0?deptUsers.map(function(u){return React.createElement("div",{key:u.id,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #f0f0ee"}},React.createElement("div",{style:{width:30,height:30,borderRadius:"50%",background:d.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:d.color}},getInitials(u.name)),React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:13,fontWeight:500,color:"#111"}},u.name),React.createElement("div",{style:{fontSize:10,color:"#888"}},"@"+u.username)),React.createElement("div",{style:{width:8,height:8,borderRadius:"50%",background:"#25D366"}}))}):React.createElement("div",{style:{fontSize:12,color:"#ccc",padding:"8px 0"}},"Sin agentes asignados"))})))))
 
     :view==="routing"?
-      React.createElement("div",{style:{flex:1,padding:24,overflowY:"auto"}},React.createElement("div",{style:{maxWidth:800,margin:"0 auto"}},React.createElement("h2",{style:{fontSize:18,fontWeight:600,color:"#111",marginBottom:4}},"Motor de Routing IA"),React.createElement("p",{style:{fontSize:13,color:"#888",marginBottom:20}},"Clasificacion automatica y derivacion a areas"),React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:24}},Object.entries(DEPARTMENTS).map(function(entry){var k=entry[0];var d=entry[1];var count=contacts.filter(function(c){return c.department===k}).length;return React.createElement("div",{key:k,style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},React.createElement("span",{style:{fontSize:20}},d.icon),React.createElement("div",null,React.createElement("div",{style:{fontSize:14,fontWeight:600,color:"#111"}},d.label),React.createElement("div",{style:{fontSize:11,color:"#888"}},count+" conv. activas"))),React.createElement("div",{style:{fontSize:11,color:"#aaa",marginBottom:6}},"Agentes:"),React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},agents.filter(function(a){return a.department===k}).map(function(a){return React.createElement("span",{key:a.id,style:{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:20,background:d.bg,fontSize:11,color:d.color,fontWeight:500}},React.createElement("div",{style:{width:6,height:6,borderRadius:"50%",background:"#25D366"}}),a.name)})))})),routingLog.length>0&&React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#111",marginBottom:10}},"Historial de reasignaciones"),routingLog.map(function(log,i){return React.createElement("div",{key:i,style:{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid #f0f0ee",fontSize:12,flexWrap:"wrap"}},React.createElement("span",{style:{color:"#888",fontSize:11}},formatTime(log.created_at)),React.createElement("span",{style:{fontWeight:500,color:"#333"}},log.contact_name),log.from_department&&React.createElement(Badge,{type:"dept",data:log.from_department}),React.createElement("span",{style:{color:"#ccc"}},"->"),React.createElement(Badge,{type:"dept",data:log.to_department}),React.createElement("span",{style:{fontSize:10,color:"#bbb"}},"("+log.routed_by+")"))}))))
+      React.createElement("div",{style:{flex:1,padding:24,overflowY:"auto"}},React.createElement("div",{style:{maxWidth:800,margin:"0 auto"}},
+        React.createElement("h2",{style:{fontSize:18,fontWeight:600,color:"#111",marginBottom:4}},"Motor de Routing IA"),
+        React.createElement("p",{style:{fontSize:13,color:"#888",marginBottom:20}},"Clasificacion automatica y derivacion a areas"),
+
+        user.role==="admin"&&React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:20,marginBottom:20}},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:16}},
+            React.createElement("span",{style:{fontSize:18}},"\u{1F916}"),
+            React.createElement("div",null,
+              React.createElement("div",{style:{fontSize:14,fontWeight:600,color:"#111"}},"Respuesta Automatica por Canal"),
+              React.createElement("div",{style:{fontSize:12,color:"#888"}},"Cuando esta activado, la IA responde automaticamente los mensajes entrantes"))),
+          React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+            ["instagram","facebook","whatsapp","email"].map(function(chKey){
+              var chData=CHANNELS[chKey];
+              var setting=autoReply.find(function(a){return a.channel===chKey});
+              var enabled=setting?setting.enabled:0;
+              return React.createElement("div",{key:chKey,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:enabled?"#E7F9EE":"#f9f9f7",borderRadius:8,border:enabled?"1px solid #C0DD97":"1px solid #e5e5e3"}},
+                React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},
+                  React.createElement("span",{style:{fontSize:11,padding:"3px 8px",borderRadius:20,background:chData.bg,color:chData.textColor,fontWeight:600}},chData.icon),
+                  React.createElement("span",{style:{fontSize:13,fontWeight:500,color:"#111"}},chData.label),
+                  enabled&&React.createElement("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:"#E7F9EE",color:"#3B6D11",fontWeight:500}},"IA activa")),
+                React.createElement("label",{className:"switch"},
+                  React.createElement("input",{type:"checkbox",checked:!!enabled,onChange:function(){toggleAutoReply(chKey,enabled)}}),
+                  React.createElement("span",{className:"slider"})))
+            }))),
+
+        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:24}},Object.entries(DEPARTMENTS).map(function(entry){var k=entry[0];var d=entry[1];var count=contacts.filter(function(c){return c.department===k}).length;return React.createElement("div",{key:k,style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},React.createElement("span",{style:{fontSize:20}},d.icon),React.createElement("div",null,React.createElement("div",{style:{fontSize:14,fontWeight:600,color:"#111"}},d.label),React.createElement("div",{style:{fontSize:11,color:"#888"}},count+" conv. activas"))),React.createElement("div",{style:{fontSize:11,color:"#aaa",marginBottom:6}},"Agentes:"),React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},agents.filter(function(a){return a.department===k}).map(function(a){return React.createElement("span",{key:a.id,style:{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:20,background:d.bg,fontSize:11,color:d.color,fontWeight:500}},React.createElement("div",{style:{width:6,height:6,borderRadius:"50%",background:"#25D366"}}),a.name)})))})),
+        routingLog.length>0&&React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#111",marginBottom:10}},"Historial de reasignaciones"),routingLog.map(function(log,i){return React.createElement("div",{key:i,style:{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid #f0f0ee",fontSize:12,flexWrap:"wrap"}},React.createElement("span",{style:{color:"#888",fontSize:11}},formatTime(log.created_at)),React.createElement("span",{style:{fontWeight:500,color:"#333"}},log.contact_name),log.from_department&&React.createElement(Badge,{type:"dept",data:log.from_department}),React.createElement("span",{style:{color:"#ccc"}},"->"),React.createElement(Badge,{type:"dept",data:log.to_department}),React.createElement("span",{style:{fontSize:10,color:"#bbb"}},"("+log.routed_by+")"))}))))
 
     :view==="users"?
       React.createElement("div",{style:{flex:1,padding:24,overflowY:"auto"}},React.createElement("div",{style:{maxWidth:800,margin:"0 auto"}},
