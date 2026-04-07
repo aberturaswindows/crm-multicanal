@@ -3,6 +3,7 @@ var router = express.Router();
 var getDb = require("../db/setup").getDb;
 var generateSuggestion = require("../services/ai-router").generateSuggestion;
 var classifyMessage = require("../services/ai-router").classifyMessage;
+var STAGE_LABELS = require("../services/ai-router").STAGE_LABELS;
 var whatsapp = require("../services/channels/whatsapp");
 var instagram = require("../services/channels/instagram");
 var facebook = require("../services/channels/facebook");
@@ -87,6 +88,56 @@ router.put("/auto-reply/:channel", function(req, res) {
     res.json(updated);
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+router.put("/contacts/:id/stage", function(req, res) {
+  var db = getDb();
+  var stage = req.body.stage;
+  var validStages = ["consulta", "recopilando_datos", "datos_completos", "presupuesto_enviado", "seguimiento", "cerrado_ganado", "cerrado_perdido", "sin_respuesta"];
+  if (validStages.indexOf(stage) === -1) return res.status(400).json({ error: "Etapa invalida" });
+
+  var updates = ["conversation_stage = ?", "updated_at = CURRENT_TIMESTAMP"];
+  var values = [stage];
+
+  if (stage === "presupuesto_enviado") {
+    updates.push("quote_sent_at = CURRENT_TIMESTAMP");
+    updates.push("followup_count = 0");
+    updates.push("last_followup_at = NULL");
+  }
+  if (stage === "cerrado_perdido" && req.body.lost_reason) {
+    updates.push("lost_reason = ?");
+    values.push(req.body.lost_reason);
+  }
+  if (stage === "cerrado_ganado") {
+    updates.push("status = 'cliente'");
+  }
+  if (stage === "consulta") {
+    updates.push("quote_sent_at = NULL");
+    updates.push("followup_count = 0");
+    updates.push("last_followup_at = NULL");
+    updates.push("lost_reason = NULL");
+  }
+
+  values.push(req.params.id);
+  db.prepare("UPDATE contacts SET " + updates.join(", ") + " WHERE id = ?").run(values);
+  var updated = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  console.log("[STAGE] " + updated.name + " -> " + stage + (req.body.lost_reason ? " (motivo: " + req.body.lost_reason + ")" : ""));
+  res.json(updated);
+});
+
+router.get("/stage-labels", function(req, res) {
+  res.json(STAGE_LABELS || {});
+});
+
+router.get("/lost-stats", function(req, res) {
+  var db = getDb();
+  try {
+    var stats = db.prepare("SELECT lost_reason, COUNT(*) as count FROM contacts WHERE conversation_stage = 'cerrado_perdido' AND lost_reason IS NOT NULL GROUP BY lost_reason ORDER BY count DESC").all();
+    var total = db.prepare("SELECT COUNT(*) as count FROM contacts WHERE conversation_stage = 'cerrado_perdido'").get().count;
+    res.json({ stats: stats, total: total });
+  } catch (e) {
+    res.json({ stats: [], total: 0 });
   }
 });
 
@@ -210,7 +261,9 @@ router.get("/metrics", function(req, res) {
   var byChannel = db.prepare("SELECT channel, COUNT(*) as count FROM messages GROUP BY channel ORDER BY count DESC").all();
   var byDepartment = db.prepare("SELECT department, COUNT(*) as count FROM contacts GROUP BY department ORDER BY count DESC").all();
   var byStatus = db.prepare("SELECT status, COUNT(*) as count FROM contacts GROUP BY status ORDER BY count DESC").all();
-  res.json({ totalMessages: totalMessages, totalContacts: totalContacts, totalConversations: totalConversations, byChannel: byChannel, byDepartment: byDepartment, byStatus: byStatus });
+  var byStage = db.prepare("SELECT conversation_stage, COUNT(*) as count FROM contacts WHERE conversation_stage IS NOT NULL GROUP BY conversation_stage ORDER BY count DESC").all();
+  var lostStats = db.prepare("SELECT lost_reason, COUNT(*) as count FROM contacts WHERE conversation_stage = 'cerrado_perdido' AND lost_reason IS NOT NULL GROUP BY lost_reason ORDER BY count DESC").all();
+  res.json({ totalMessages: totalMessages, totalContacts: totalContacts, totalConversations: totalConversations, byChannel: byChannel, byDepartment: byDepartment, byStatus: byStatus, byStage: byStage, lostStats: lostStats });
 });
 
 module.exports = router;
