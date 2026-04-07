@@ -24,6 +24,21 @@ router.get("/users", function(req, res) {
   res.json(users);
 });
 
+router.post("/users", function(req, res) {
+  var db = getDb();
+  var username = req.body.username;
+  var password = req.body.password;
+  var name = req.body.name;
+  var role = req.body.role || "agent";
+  var department = req.body.department || "ventas";
+  if (!username || !password || !name) return res.status(400).json({ error: "Username, contrasena y nombre son requeridos" });
+  var existing = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
+  if (existing) return res.status(409).json({ error: "Ese nombre de usuario ya existe" });
+  var result = db.prepare("INSERT INTO users (username, password, name, role, department, is_active) VALUES (?, ?, ?, ?, ?, 1)").run(username, password, name, role, department);
+  var user = db.prepare("SELECT id, username, name, role, department, is_active, created_at FROM users WHERE id = ?").get(result.lastInsertRowid);
+  res.json(user);
+});
+
 router.put("/users/:id", function(req, res) {
   var db = getDb();
   var updates = [];
