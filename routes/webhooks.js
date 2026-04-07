@@ -2,7 +2,8 @@ var express = require("express");
 var router = express.Router();
 var getDb = require("../db/setup").getDb;
 var classifyMessage = require("../services/ai-router").classifyMessage;
-var generateSuggestion = require("../services/ai-router").generateSuggestion;
+var generateAutoReply = require("../services/ai-router").generateAutoReply;
+var detectLostReason = require("../services/ai-router").detectLostReason;
 var whatsapp = require("../services/channels/whatsapp");
 var instagram = require("../services/channels/instagram");
 var facebook = require("../services/channels/facebook");
@@ -19,27 +20,61 @@ function isAutoReplyEnabled(channel) {
   }
 }
 
-async function sendAutoReply(contact, channel) {
+async function sendChannelMessage(channel, channelId, phoneLine, contactEmail, text) {
+  var sendResult = { success: true, simulated: true };
+  if (channel === "whatsapp") {
+    sendResult = await whatsapp.sendMessage(channelId, text, phoneLine || 1);
+  } else if (channel === "instagram") {
+    sendResult = await instagram.sendMessage(channelId, text);
+  } else if (channel === "facebook") {
+    sendResult = await facebook.sendMessage(channelId, text);
+  } else if (channel === "email") {
+    sendResult = await email.sendMessage(contactEmail, "Re: Consulta - Aberturas Windows", text);
+  }
+  return sendResult;
+}
+
+async function handleAutoReply(contact, channel) {
   try {
     var db = getDb();
     var messages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(contact.id);
-    var suggestion = await generateSuggestion(contact, messages);
-    if (!suggestion || suggestion.indexOf("Error") === 0) {
-      console.log("[AUTO-REPLY] No se pudo generar respuesta para " + contact.name);
+    var result = await generateAutoReply(contact, messages);
+
+    if (!result.reply) {
+      console.log("[AUTO-REPLY] Sin respuesta para " + contact.name + " (etapa: " + (contact.conversation_stage || "consulta") + ")");
       return;
     }
-    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, 'IA NexoCRM')").run(contact.id, suggestion, channel);
-    var sendResult = { success: true, simulated: true };
-    if (channel === "whatsapp") {
-      sendResult = await whatsapp.sendMessage(contact.channel_id, suggestion, contact.phone_line || 1);
-    } else if (channel === "instagram") {
-      sendResult = await instagram.sendMessage(contact.channel_id, suggestion);
-    } else if (channel === "facebook") {
-      sendResult = await facebook.sendMessage(contact.channel_id, suggestion);
-    } else if (channel === "email") {
-      sendResult = await email.sendMessage(contact.email, "Re: Consulta - Aberturas Windows", suggestion);
+
+    if (result.stageChange) {
+      var updates = { conversation_stage: result.stageChange };
+      if (result.stageChange === "cerrado_perdido") {
+        var lastMsg = db.prepare("SELECT content FROM messages WHERE contact_id = ? AND direction = 'incoming' ORDER BY created_at DESC LIMIT 1").get(contact.id);
+        if (lastMsg) {
+          var reason = await detectLostReason(lastMsg.content);
+          updates.lost_reason = reason;
+        }
+      }
+      var setClauses = [];
+      var setValues = [];
+      var keys = Object.keys(updates);
+      for (var i = 0; i < keys.length; i++) {
+        setClauses.push(keys[i] + " = ?");
+        setValues.push(updates[keys[i]]);
+      }
+      setClauses.push("updated_at = CURRENT_TIMESTAMP");
+      setValues.push(contact.id);
+      db.prepare("UPDATE contacts SET " + setClauses.join(", ") + " WHERE id = ?").run(setValues);
+      console.log("[AUTO-REPLY] Etapa cambiada: " + (contact.conversation_stage || "consulta") + " -> " + result.stageChange + " | " + contact.name);
+
+      if (result.stageChange === "datos_completos") {
+        console.log("[AUTO-REPLY] *** ATENCION: " + contact.name + " tiene todos los datos para cotizar. Armar presupuesto. ***");
+      }
     }
-    console.log("[AUTO-REPLY] " + channel.toUpperCase() + " -> " + contact.name + ": " + suggestion.substring(0, 60) + "... | Enviado: " + sendResult.success);
+
+    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, 'IA NexoCRM')").run(contact.id, result.reply, channel);
+
+    var sendResult = await sendChannelMessage(channel, contact.channel_id, contact.phone_line, contact.email, result.reply);
+    console.log("[AUTO-REPLY] " + channel.toUpperCase() + " -> " + contact.name + ": " + result.reply.substring(0, 60) + "... | Enviado: " + sendResult.success);
   } catch (err) {
     console.error("[AUTO-REPLY] Error:", err.message);
   }
@@ -50,14 +85,25 @@ async function handleIncomingMessage(normalized) {
   try {
     var contact = db.prepare("SELECT * FROM contacts WHERE channel = ? AND channel_id = ?").get(normalized.channel, normalized.channelId);
     if (!contact) {
-      var result = db.prepare("INSERT INTO contacts (name, phone, email, channel, channel_id, phone_line, department, status, origin) VALUES (?, ?, ?, ?, ?, ?, 'ventas', 'lead', ?)").run(normalized.senderName || "Contacto nuevo", normalized.senderPhone || null, normalized.senderEmail || null, normalized.channel, normalized.channelId, normalized.phoneLine || null, normalized.channel);
+      var result = db.prepare("INSERT INTO contacts (name, phone, email, channel, channel_id, phone_line, department, status, origin, conversation_stage) VALUES (?, ?, ?, ?, ?, ?, 'ventas', 'lead', ?, 'consulta')").run(normalized.senderName || "Contacto nuevo", normalized.senderPhone || null, normalized.senderEmail || null, normalized.channel, normalized.channelId, normalized.phoneLine || null, normalized.channel);
       contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(result.lastInsertRowid);
     }
     if (contact && normalized.senderName && normalized.senderName !== contact.name && contact.name.match(/^\d{10,}$/)) {
       db.prepare("UPDATE contacts SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(normalized.senderName, contact.id);
       contact.name = normalized.senderName;
     }
+
+    var stage = contact.conversation_stage || "consulta";
+    if (stage === "presupuesto_enviado" || stage === "seguimiento" || stage === "sin_respuesta") {
+      db.prepare("UPDATE contacts SET conversation_stage = 'seguimiento', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(contact.id);
+      contact.conversation_stage = "seguimiento";
+    }
+    if (stage === "cerrado_perdido" || stage === "cerrado_ganado") {
+      contact.conversation_stage = stage;
+    }
+
     db.prepare("INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?)").run(contact.id, normalized.text, normalized.channel, normalized.messageId, normalized.mediaType || null, normalized.mediaUrl || null, normalized.storyUrl || null);
+
     var textForAi = normalized.text || "";
     if (normalized.storyUrl) { textForAi = "[Respuesta a historia de Instagram] " + textForAi; }
     var recentMessages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT 10").all(contact.id).reverse();
@@ -66,12 +112,13 @@ async function handleIncomingMessage(normalized) {
       db.prepare("UPDATE contacts SET department = ?, ai_confidence = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(classification.department, classification.confidence, contact.id);
       db.prepare("INSERT INTO routing_log (contact_id, from_department, to_department, reason, confidence) VALUES (?, ?, ?, ?, ?)").run(contact.id, contact.department, classification.department, classification.reason, classification.confidence);
     }
-    console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + (normalized.text || "").substring(0, 50) + " -> " + classification.department + " (" + classification.confidence + ")");
+
+    console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + (normalized.text || "").substring(0, 50) + " -> " + classification.department + " (" + classification.confidence + ") | Etapa: " + (contact.conversation_stage || "consulta"));
 
     if (isAutoReplyEnabled(normalized.channel)) {
       var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
       setTimeout(function() {
-        sendAutoReply(updatedContact, normalized.channel);
+        handleAutoReply(updatedContact, normalized.channel);
       }, 2000);
     }
 
