@@ -81,6 +81,27 @@ var COMPANY_KNOWLEDGE = [
   "- Los descuentos, promociones bancarias y condiciones de pago van especificados en cada presupuesto."
 ].join("\n");
 
+var QUOTE_DATA_FIELDS = [
+  "nombre para el presupuesto",
+  "si incluye o no instalacion",
+  "direccion de la obra (si incluye instalacion)",
+  "color de la perfileria",
+  "tipo de vidrio (DVH o simple)",
+  "tipo de abertura (corrediza, de abrir, etc.)",
+  "medidas aproximadas"
+];
+
+var STAGE_LABELS = {
+  consulta: "Consulta inicial",
+  recopilando_datos: "Recopilando datos para cotizar",
+  datos_completos: "Datos completos - Armar presupuesto",
+  presupuesto_enviado: "Presupuesto enviado - Esperando respuesta",
+  seguimiento: "En seguimiento",
+  cerrado_ganado: "Cerrado - Ganado",
+  cerrado_perdido: "Cerrado - Perdido",
+  sin_respuesta: "Sin respuesta"
+};
+
 function getArgentinaTime() {
   var now = new Date();
   var argTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
@@ -100,7 +121,6 @@ async function classifyMessage(messageText, conversationHistory) {
   if (!conversationHistory) conversationHistory = [];
   var apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.warn("ANTHROPIC_API_KEY no configurada. Usando clasificacion por keywords.");
     return classifyByKeywords(messageText);
   }
 
@@ -207,6 +227,189 @@ async function generateSuggestion(contact, messages) {
   }
 }
 
+async function generateAutoReply(contact, messages) {
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { reply: null, stageChange: null };
+
+  var stage = contact.conversation_stage || "consulta";
+
+  if (stage === "datos_completos" || stage === "cerrado_ganado" || stage === "cerrado_perdido" || stage === "sin_respuesta") {
+    return { reply: null, stageChange: null };
+  }
+
+  var dept = DEPARTMENTS[contact.department] || DEPARTMENTS.ventas;
+  var lastMessages = messages.slice(-15);
+  var history = lastMessages.map(function(m) {
+    var role = m.direction === "incoming" ? "Cliente" : "Agente";
+    return role + ": " + m.content;
+  }).join("\n");
+
+  var channelLabels = {
+    whatsapp: "WhatsApp", instagram: "Instagram", facebook: "Facebook Messenger",
+    email: "Email", telefono: "Telefono"
+  };
+
+  var timeInfo = getArgentinaTime();
+  var now = new Date();
+  var argHour = now.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" });
+
+  var stageInstructions = "";
+
+  if (stage === "consulta" || stage === "recopilando_datos") {
+    stageInstructions = "ETAPA ACTUAL: Recopilando datos para cotizacion.\n";
+    stageInstructions += "DATOS QUE NECESITAS PARA COTIZAR:\n";
+    for (var i = 0; i < QUOTE_DATA_FIELDS.length; i++) {
+      stageInstructions += "- " + QUOTE_DATA_FIELDS[i] + "\n";
+    }
+    stageInstructions += "\nINSTRUCCIONES DE ETAPA:\n";
+    stageInstructions += "- Responde la consulta del cliente de forma natural.\n";
+    stageInstructions += "- Si el cliente esta interesado, pedi los datos que faltan para cotizar (de a 2-3 datos por mensaje, no todos juntos).\n";
+    stageInstructions += "- Si el cliente ya proporciono TODOS los datos necesarios, confirma que vas a preparar el presupuesto en hasta 72 hs habiles.\n";
+    stageInstructions += "- NO pidas datos que el cliente ya dio en mensajes anteriores.\n";
+  } else if (stage === "presupuesto_enviado" || stage === "seguimiento") {
+    stageInstructions = "ETAPA ACTUAL: Seguimiento de presupuesto.\n";
+    stageInstructions += "Seguimiento numero: " + ((contact.followup_count || 0) + 1) + " de 5.\n";
+    stageInstructions += "INSTRUCCIONES DE ETAPA:\n";
+    stageInstructions += "- El cliente ya recibio un presupuesto de nuestra empresa.\n";
+    stageInstructions += "- Hace un seguimiento amable y profesional.\n";
+    stageInstructions += "- Pregunta si pudo revisar el presupuesto y si tiene alguna consulta.\n";
+    stageInstructions += "- Si el cliente dice que NO va a hacer el trabajo con nosotros, agradece y preguntale el motivo ofreciendo estas opciones:\n";
+    stageInstructions += '  1) "El presupuesto excedia mi presupuesto" (Precio)\n';
+    stageInstructions += '  2) "Elegi otra empresa" (Competencia)\n';
+    stageInstructions += '  3) "Los tiempos de entrega no me servian" (Plazos)\n';
+    stageInstructions += '  4) "La obra se postergo o cancelo" (Obra pausada)\n';
+    stageInstructions += '  5) "Otro motivo"\n';
+    stageInstructions += "- Si el cliente confirma que SI va a hacer el trabajo, felicitalo y decile que un asesor se va a comunicar para coordinar los proximos pasos.\n";
+    stageInstructions += "- Respuesta breve: 2-3 oraciones.\n";
+  }
+
+  var prompt = "Sos un agente de atencion al cliente de Aberturas Windows.\n\n";
+  prompt += "CONOCIMIENTO DE LA EMPRESA:\n" + COMPANY_KNOWLEDGE + "\n\n";
+  prompt += stageInstructions + "\n";
+  prompt += "REGLAS GENERALES:\n";
+  prompt += "- Tono: formal pero relajado, profesional y amable. Tutear al cliente.\n";
+  prompt += "- NUNCA dar precios por mensaje.\n";
+  prompt += "- Respuestas breves: 2-3 oraciones maximo.\n";
+  prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n\n";
+  prompt += "La hora actual en Argentina es las " + argHour + '. Si saludas, usa "' + timeInfo.greeting + '".\n';
+  prompt += "El cliente " + contact.name + " te contacto por " + (channelLabels[contact.channel] || contact.channel) + ".\n\n";
+  prompt += "Historial de la conversacion:\n" + history + "\n\n";
+  prompt += 'Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato:\n';
+  prompt += '{"reply":"tu respuesta al cliente","stage_assessment":"consulta|recopilando_datos|datos_completos|cliente_acepta|cliente_rechaza|continuar"}';
+  prompt += '\n\nDonde stage_assessment es:\n';
+  prompt += '- "consulta": el cliente recien consulta, no pidio cotizacion aun\n';
+  prompt += '- "recopilando_datos": el cliente esta interesado y estamos pidiendo/recibiendo datos\n';
+  prompt += '- "datos_completos": el cliente ya dio TODOS los datos necesarios para cotizar\n';
+  prompt += '- "cliente_acepta": el cliente confirma que va a hacer el trabajo con nosotros\n';
+  prompt += '- "cliente_rechaza": el cliente dice que NO va a hacer el trabajo\n';
+  prompt += '- "continuar": seguir en la etapa actual sin cambios\n';
+
+  try {
+    var res = await axios.post("https://api.anthropic.com/v1/messages", {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 400,
+      messages: [{ role: "user", content: prompt }]
+    }, {
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01"
+      }
+    });
+
+    var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
+    try {
+      var parsed = JSON.parse(text);
+      var reply = parsed.reply || null;
+      var assessment = parsed.stage_assessment || "continuar";
+
+      var stageChange = null;
+      if (assessment === "datos_completos" && stage !== "datos_completos") {
+        stageChange = "datos_completos";
+      } else if (assessment === "recopilando_datos" && stage === "consulta") {
+        stageChange = "recopilando_datos";
+      } else if (assessment === "cliente_acepta") {
+        stageChange = "cerrado_ganado";
+      } else if (assessment === "cliente_rechaza") {
+        stageChange = "cerrado_perdido";
+      }
+
+      return { reply: reply, stageChange: stageChange };
+    } catch (parseErr) {
+      return { reply: text, stageChange: null };
+    }
+  } catch (err) {
+    console.error("Error generando auto-reply:", err.message);
+    return { reply: null, stageChange: null };
+  }
+}
+
+async function generateFollowup(contact, messages) {
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  var followupNum = (contact.followup_count || 0) + 1;
+  var lastMessages = messages.slice(-10);
+  var history = lastMessages.map(function(m) {
+    var role = m.direction === "incoming" ? "Cliente" : "Agente";
+    return role + ": " + m.content;
+  }).join("\n");
+
+  var timeInfo = getArgentinaTime();
+
+  var prompt = "Sos un agente de atencion al cliente de Aberturas Windows.\n\n";
+  prompt += "El cliente " + contact.name + " recibio un presupuesto pero no respondio.\n";
+  prompt += "Este es el seguimiento numero " + followupNum + " de 5.\n\n";
+  prompt += "Historial reciente:\n" + history + "\n\n";
+  prompt += "REGLAS:\n";
+  prompt += "- Tono: formal pero relajado, profesional, amable. Tutear.\n";
+  prompt += "- Mensaje breve de seguimiento (2-3 oraciones).\n";
+  prompt += "- NO seas insistente ni presiones.\n";
+  prompt += '- Si saludas, usa "' + timeInfo.greeting + '".\n';
+
+  if (followupNum === 1) {
+    prompt += "- Primer seguimiento: pregunta amablemente si pudo revisar el presupuesto.\n";
+  } else if (followupNum === 2) {
+    prompt += "- Segundo seguimiento: recorda que estamos a disposicion para cualquier consulta sobre el presupuesto.\n";
+  } else if (followupNum === 3) {
+    prompt += "- Tercer seguimiento: ofrece agendar una visita al showroom o una llamada para resolver dudas.\n";
+  } else if (followupNum === 4) {
+    prompt += "- Cuarto seguimiento: menciona que los precios del presupuesto tienen vigencia limitada.\n";
+  } else if (followupNum === 5) {
+    prompt += "- Ultimo seguimiento: agradece el interes, deja la puerta abierta y menciona que puede contactarnos cuando quiera.\n";
+  }
+
+  prompt += "\nGenera SOLO el mensaje de seguimiento, sin explicaciones ni prefijos.";
+
+  try {
+    var res = await axios.post("https://api.anthropic.com/v1/messages", {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 200,
+      messages: [{ role: "user", content: prompt }]
+    }, {
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01"
+      }
+    });
+
+    return res.data.content && res.data.content[0] ? res.data.content[0].text : null;
+  } catch (err) {
+    console.error("Error generando followup:", err.message);
+    return null;
+  }
+}
+
+async function detectLostReason(messageText) {
+  var lower = messageText.toLowerCase();
+  if (lower.indexOf("precio") !== -1 || lower.indexOf("caro") !== -1 || lower.indexOf("presupuesto") !== -1 || lower.indexOf("costoso") !== -1 || lower.indexOf("plata") !== -1) return "precio";
+  if (lower.indexOf("otra empresa") !== -1 || lower.indexOf("otro proveedor") !== -1 || lower.indexOf("competencia") !== -1 || lower.indexOf("otro lado") !== -1) return "competencia";
+  if (lower.indexOf("plazo") !== -1 || lower.indexOf("tiempo") !== -1 || lower.indexOf("demora") !== -1 || lower.indexOf("tarda") !== -1 || lower.indexOf("rapido") !== -1) return "plazos";
+  if (lower.indexOf("obra") !== -1 || lower.indexOf("postergo") !== -1 || lower.indexOf("cancelo") !== -1 || lower.indexOf("pauso") !== -1 || lower.indexOf("freno") !== -1) return "obra_pausada";
+  return "otro";
+}
+
 function classifyByKeywords(text) {
   var lower = text.toLowerCase();
   var rules = {
@@ -235,4 +438,12 @@ function classifyByKeywords(text) {
   return { department: best, confidence: confidence, reason: reason };
 }
 
-module.exports = { classifyMessage: classifyMessage, generateSuggestion: generateSuggestion, DEPARTMENTS: DEPARTMENTS };
+module.exports = {
+  classifyMessage: classifyMessage,
+  generateSuggestion: generateSuggestion,
+  generateAutoReply: generateAutoReply,
+  generateFollowup: generateFollowup,
+  detectLostReason: detectLostReason,
+  DEPARTMENTS: DEPARTMENTS,
+  STAGE_LABELS: STAGE_LABELS
+};
