@@ -73,25 +73,91 @@ function App(){
   var srs=useState(false);var showReassign=srs[0];var setShowReassign=srs[1];
   var chatRef=useRef(null);var pollRef=useRef(null);
 
+  // ====================================================
+  // TODAS las funciones y useEffect ANTES del if(!user)
+  // Esto corrige la violacion de Rules of Hooks
+  // ====================================================
+
+  var loggedIn=!!user;
+
+  var loadContacts=function(){
+    if(!user)return;
+    var url=API+"/contacts?";
+    if(filterCh!=="all")url+="channel="+filterCh+"&";
+    if(user.role==="agent"&&user.department){url+="department="+user.department+"&"}
+    else if(filterDept!=="all"){url+="department="+filterDept+"&"}
+    fetch(url).then(function(r){return r.json()}).then(setContacts).catch(function(){})
+  };
+
+  var loadMessages=function(contactId){
+    fetch(API+"/contacts/"+contactId+"/messages").then(function(r){return r.json()}).then(function(msgs){
+      setMessages(msgs);
+      setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)
+    }).catch(function(){})
+  };
+
+  var loadSuggestion=async function(contactId){
+    setAiLoading(true);setSuggestion("");
+    try{var res=await fetch(API+"/contacts/"+contactId+"/suggestion");var data=await res.json();setSuggestion(data.suggestion||"")}
+    catch(e){setSuggestion("Error de conexion.")}
+    setAiLoading(false)
+  };
+
+  // Effect 1: Cargar datos iniciales cuando el usuario se loguea
+  useEffect(function(){
+    if(!user)return;
+    loadContacts();
+    fetch(API+"/agents").then(function(r){return r.json()}).then(setAgents).catch(function(){});
+    pollRef.current=setInterval(function(){loadContacts()},5000);
+    return function(){clearInterval(pollRef.current)}
+  },[loggedIn]);
+
+  // Effect 2: Recargar contactos cuando cambian los filtros
+  useEffect(function(){
+    if(!user)return;
+    loadContacts();
+  },[filterCh,filterDept]);
+
+  // Effect 3: Cargar mensajes y sugerencia cuando se selecciona un contacto
+  useEffect(function(){
+    if(!user||!selected)return;
+    loadMessages(selected.id);
+    loadSuggestion(selected.id);
+  },[selected?selected.id:null]);
+
+  // Effect 4: Polling de mensajes del contacto seleccionado
+  useEffect(function(){
+    if(!user||!selected)return;
+    var msgPoll=setInterval(function(){
+      fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()}).then(function(newMsgs){
+        setMessages(function(prev){
+          if(newMsgs.length!==prev.length){
+            setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)
+          }
+          return newMsgs
+        })
+      }).catch(function(){})
+    },3000);
+    return function(){clearInterval(msgPoll)}
+  },[selected?selected.id:null]);
+
+  // Effect 5: Cargar routing log o metricas segun la vista
+  useEffect(function(){
+    if(!user)return;
+    if(view==="routing"){fetch(API+"/routing-log").then(function(r){return r.json()}).then(setRoutingLog).catch(function(){})}
+    if(view==="metrics"){fetch(API+"/metrics").then(function(r){return r.json()}).then(setMetrics).catch(function(){})}
+  },[view]);
+
+  // ====================================================
+  // Si no hay usuario, mostrar pantalla de login
+  // ====================================================
   if(!user)return React.createElement(LoginScreen,{onLogin:function(u){setUser(u)}});
 
+  // ====================================================
+  // Funciones que solo se usan en el JSX (despues del login)
+  // ====================================================
   var logout=function(){localStorage.removeItem("nexocrm_user");setUser(null)};
   var changePassword=function(){var np=prompt("Ingresa tu nueva contrasena:");if(np&&np.length>=4){fetch(API+"/users/"+user.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:np})}).then(function(r){return r.json()}).then(function(){alert("Contrasena actualizada correctamente")}).catch(function(){alert("Error al actualizar")})}else if(np){alert("La contrasena debe tener al menos 4 caracteres")}};
-
-  useEffect(function(){loadContacts();fetch(API+"/agents").then(function(r){return r.json()}).then(setAgents).catch(function(){});pollRef.current=setInterval(function(){loadContacts()},5000);return function(){clearInterval(pollRef.current)}},[]);
-
-  var loadContacts=function(){var url=API+"/contacts?";if(filterCh!=="all")url+="channel="+filterCh+"&";if(user.role==="agent"&&user.department){url+="department="+user.department+"&"}else if(filterDept!=="all"){url+="department="+filterDept+"&"}fetch(url).then(function(r){return r.json()}).then(setContacts).catch(function(){})};
-
-  useEffect(function(){loadContacts()},[filterCh,filterDept]);
-  useEffect(function(){if(selected){loadMessages(selected.id);loadSuggestion(selected.id)}},[selected?selected.id:null]);
-
-  var loadMessages=function(contactId){fetch(API+"/contacts/"+contactId+"/messages").then(function(r){return r.json()}).then(function(msgs){setMessages(msgs);setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}).catch(function(){})};
-
-  useEffect(function(){if(!selected)return;var msgPoll=setInterval(function(){fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()}).then(function(newMsgs){setMessages(function(prev){if(newMsgs.length!==prev.length){setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}return newMsgs})}).catch(function(){})},3000);return function(){clearInterval(msgPoll)}},[selected?selected.id:null]);
-
-  useEffect(function(){if(view==="routing"){fetch(API+"/routing-log").then(function(r){return r.json()}).then(setRoutingLog).catch(function(){})}if(view==="metrics"){fetch(API+"/metrics").then(function(r){return r.json()}).then(setMetrics).catch(function(){})}},[view]);
-
-  var loadSuggestion=async function(contactId){setAiLoading(true);setSuggestion("");try{var res=await fetch(API+"/contacts/"+contactId+"/suggestion");var data=await res.json();setSuggestion(data.suggestion||"")}catch(e){setSuggestion("Error de conexion.")}setAiLoading(false)};
 
   var sendMsg=async function(){if(!msgText.trim()||!selected)return;try{await fetch(API+"/contacts/"+selected.id+"/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:msgText.trim(),agent_name:user.name})});setMsgText("");var msgs=await fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()});setMessages(msgs);loadContacts();setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100);loadSuggestion(selected.id)}catch(err){console.error(err)}};
 
