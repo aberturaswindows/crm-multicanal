@@ -72,11 +72,13 @@ function App(){
   var rls=useState([]);var routingLog=rls[0];var setRoutingLog=rls[1];
   var srs=useState(false);var showReassign=srs[0];var setShowReassign=srs[1];
   var chatRef=useRef(null);var pollRef=useRef(null);
-
-  // ====================================================
-  // TODAS las funciones y useEffect ANTES del if(!user)
-  // Esto corrige la violacion de Rules of Hooks
-  // ====================================================
+  var uls=useState([]);var usersList=uls[0];var setUsersList=uls[1];
+  var snf=useState(false);var showNewForm=snf[0];var setShowNewForm=snf[1];
+  var nfu=useState("");var nfUsername=nfu[0];var setNfUsername=nfu[1];
+  var nfp=useState("");var nfPassword=nfp[0];var setNfPassword=nfp[1];
+  var nfn=useState("");var nfName=nfn[0];var setNfName=nfn[1];
+  var nfr=useState("agent");var nfRole=nfr[0];var setNfRole=nfr[1];
+  var nfd=useState("ventas");var nfDept=nfd[0];var setNfDept=nfd[1];
 
   var loggedIn=!!user;
 
@@ -103,7 +105,10 @@ function App(){
     setAiLoading(false)
   };
 
-  // Effect 1: Cargar datos iniciales cuando el usuario se loguea
+  var loadUsers=function(){
+    fetch(API+"/users").then(function(r){return r.json()}).then(setUsersList).catch(function(){})
+  };
+
   useEffect(function(){
     if(!user)return;
     loadContacts();
@@ -112,28 +117,20 @@ function App(){
     return function(){clearInterval(pollRef.current)}
   },[loggedIn]);
 
-  // Effect 2: Recargar contactos cuando cambian los filtros
-  useEffect(function(){
-    if(!user)return;
-    loadContacts();
-  },[filterCh,filterDept]);
+  useEffect(function(){if(!user)return;loadContacts()},[filterCh,filterDept]);
 
-  // Effect 3: Cargar mensajes y sugerencia cuando se selecciona un contacto
   useEffect(function(){
     if(!user||!selected)return;
     loadMessages(selected.id);
     loadSuggestion(selected.id);
   },[selected?selected.id:null]);
 
-  // Effect 4: Polling de mensajes del contacto seleccionado
   useEffect(function(){
     if(!user||!selected)return;
     var msgPoll=setInterval(function(){
       fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()}).then(function(newMsgs){
         setMessages(function(prev){
-          if(newMsgs.length!==prev.length){
-            setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)
-          }
+          if(newMsgs.length!==prev.length){setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}
           return newMsgs
         })
       }).catch(function(){})
@@ -141,21 +138,15 @@ function App(){
     return function(){clearInterval(msgPoll)}
   },[selected?selected.id:null]);
 
-  // Effect 5: Cargar routing log o metricas segun la vista
   useEffect(function(){
     if(!user)return;
     if(view==="routing"){fetch(API+"/routing-log").then(function(r){return r.json()}).then(setRoutingLog).catch(function(){})}
     if(view==="metrics"){fetch(API+"/metrics").then(function(r){return r.json()}).then(setMetrics).catch(function(){})}
+    if(view==="users"){loadUsers()}
   },[view]);
 
-  // ====================================================
-  // Si no hay usuario, mostrar pantalla de login
-  // ====================================================
   if(!user)return React.createElement(LoginScreen,{onLogin:function(u){setUser(u)}});
 
-  // ====================================================
-  // Funciones que solo se usan en el JSX (despues del login)
-  // ====================================================
   var logout=function(){localStorage.removeItem("nexocrm_user");setUser(null)};
   var changePassword=function(){var np=prompt("Ingresa tu nueva contrasena:");if(np&&np.length>=4){fetch(API+"/users/"+user.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:np})}).then(function(r){return r.json()}).then(function(){alert("Contrasena actualizada correctamente")}).catch(function(){alert("Error al actualizar")})}else if(np){alert("La contrasena debe tener al menos 4 caracteres")}};
 
@@ -164,8 +155,28 @@ function App(){
   var updateContact=async function(id,updates){try{var res=await fetch(API+"/contacts/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(updates)});var updated=await res.json();setSelected(updated);loadContacts();setShowReassign(false)}catch(err){console.error(err)}};
 
   var selectContact=function(c){setSelected(c);setShowReassign(false);setTab("info")};
+
+  var createUser=async function(){
+    if(!nfUsername||!nfPassword||!nfName){alert("Completa todos los campos");return}
+    try{var res=await fetch(API+"/users",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:nfUsername,password:nfPassword,name:nfName,role:nfRole,department:nfRole==="admin"?null:nfDept})});var data=await res.json();if(res.ok){alert("Usuario "+data.name+" creado correctamente");setShowNewForm(false);setNfUsername("");setNfPassword("");setNfName("");setNfRole("agent");setNfDept("ventas");loadUsers()}else{alert(data.error||"Error al crear usuario")}}catch(e){alert("Error de conexion")}
+  };
+
+  var resetUserPassword=function(u){
+    var np=prompt("Nueva contrasena para "+u.name+":");
+    if(np&&np.length>=4){fetch(API+"/users/"+u.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:np})}).then(function(r){return r.json()}).then(function(){alert("Contrasena de "+u.name+" actualizada");loadUsers()}).catch(function(){alert("Error al actualizar")})}else if(np){alert("La contrasena debe tener al menos 4 caracteres")}
+  };
+
+  var toggleUserActive=function(u){
+    var newState=u.is_active?0:1;
+    var msg=u.is_active?"Desactivar a "+u.name+"? No podra iniciar sesion.":"Activar a "+u.name+"?";
+    if(confirm(msg)){fetch(API+"/users/"+u.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({is_active:newState})}).then(function(r){return r.json()}).then(function(){loadUsers()}).catch(function(){alert("Error al actualizar")})}
+  };
+
   var ch=selected?CHANNELS[selected.channel]:null;
   var dept=selected?DEPARTMENTS[selected.department]:null;
+
+  var viewButtons=["inbox","routing","metrics"];
+  if(user.role==="admin")viewButtons.push("users");
 
   return React.createElement("div",{style:{width:"100%",height:"100vh",display:"flex",flexDirection:"column",overflow:"hidden"}},
     React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 20px",background:"#fff",borderBottom:"1px solid #e0e0dc",flexShrink:0}},
@@ -173,7 +184,7 @@ function App(){
         React.createElement("div",{style:{width:34,height:34,borderRadius:8,background:"linear-gradient(135deg,#185FA5,#2E86DE)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:14}},"N"),
         React.createElement("div",null,React.createElement("div",{style:{fontSize:15,fontWeight:600,color:"#111"}},"NexoCRM"),React.createElement("div",{style:{fontSize:11,color:"#999"}},user.name+" - "+(user.role==="admin"?"Administrador":DEPARTMENTS[user.department]?DEPARTMENTS[user.department].label:"")))),
       React.createElement("div",{style:{display:"flex",gap:4,alignItems:"center"}},
-        ["inbox","routing","metrics"].map(function(v){return React.createElement("button",{key:v,onClick:function(){setView(v)},style:{padding:"6px 14px",fontSize:12,borderRadius:8,border:view===v?"1px solid #185FA5":"1px solid #ddd",background:view===v?"#E6F1FB":"#fff",color:view===v?"#185FA5":"#888",cursor:"pointer",fontWeight:view===v?600:400}},v==="inbox"?"Bandeja":v==="routing"?"Routing IA":"Metricas")}),
+        viewButtons.map(function(v){var labels={inbox:"Bandeja",routing:"Routing IA",metrics:"Metricas",users:"Usuarios"};return React.createElement("button",{key:v,onClick:function(){setView(v)},style:{padding:"6px 14px",fontSize:12,borderRadius:8,border:view===v?"1px solid #185FA5":"1px solid #ddd",background:view===v?"#E6F1FB":"#fff",color:view===v?"#185FA5":"#888",cursor:"pointer",fontWeight:view===v?600:400}},labels[v])}),
         React.createElement("button",{onClick:changePassword,style:{padding:"6px 14px",fontSize:12,borderRadius:8,border:"1px solid #ddd",background:"#fff",color:"#888",cursor:"pointer",marginLeft:8}},"Clave"),
         React.createElement("button",{onClick:logout,style:{padding:"6px 14px",fontSize:12,borderRadius:8,border:"1px solid #EB3B5A",background:"#fff",color:"#EB3B5A",cursor:"pointer",marginLeft:4}},"Salir"))),
 
@@ -217,8 +228,44 @@ function App(){
               React.createElement("div",{style:{fontSize:10,fontWeight:600,color:"#aaa",letterSpacing:"0.05em",marginBottom:6}},"INFORMACION"),
               [["Email",selected.email],["Telefono",selected.phone],["Canal",CHANNELS[selected.channel]?CHANNELS[selected.channel].label:""],["Area",DEPARTMENTS[selected.department]?DEPARTMENTS[selected.department].label:""],["Origen",selected.origin],["Creado",selected.created_at?selected.created_at.substring(0,10):""]].map(function(pair){return React.createElement("div",{key:pair[0],style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0f0ee",fontSize:12}},React.createElement("span",{style:{color:"#888"}},pair[0]),React.createElement("span",{style:{color:"#111",fontWeight:500,textAlign:"right",maxWidth:"60%",overflow:"hidden",textOverflow:"ellipsis"}},pair[1]||"-"))})),
             tab==="agents"&&React.createElement("div",{style:{animation:"slideIn .2s ease"}},Object.entries(DEPARTMENTS).map(function(entry){var k=entry[0];var d=entry[1];return React.createElement("div",{key:k,style:{marginBottom:18}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:8}},React.createElement("span",{style:{fontSize:16}},d.icon),React.createElement("span",{style:{fontSize:13,fontWeight:600,color:"#111"}},d.label)),agents.filter(function(a){return a.department===k}).map(function(a){return React.createElement("div",{key:a.id,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #f0f0ee"}},React.createElement("div",{style:{width:30,height:30,borderRadius:"50%",background:d.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:d.color}},getInitials(a.name)),React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:13,fontWeight:500,color:"#111"}},a.name)),React.createElement("div",{style:{width:8,height:8,borderRadius:"50%",background:"#25D366"}}))}))})))))
+
     :view==="routing"?
       React.createElement("div",{style:{flex:1,padding:24,overflowY:"auto"}},React.createElement("div",{style:{maxWidth:800,margin:"0 auto"}},React.createElement("h2",{style:{fontSize:18,fontWeight:600,color:"#111",marginBottom:4}},"Motor de Routing IA"),React.createElement("p",{style:{fontSize:13,color:"#888",marginBottom:20}},"Clasificacion automatica y derivacion a areas"),React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:24}},Object.entries(DEPARTMENTS).map(function(entry){var k=entry[0];var d=entry[1];var count=contacts.filter(function(c){return c.department===k}).length;return React.createElement("div",{key:k,style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},React.createElement("span",{style:{fontSize:20}},d.icon),React.createElement("div",null,React.createElement("div",{style:{fontSize:14,fontWeight:600,color:"#111"}},d.label),React.createElement("div",{style:{fontSize:11,color:"#888"}},count+" conv. activas"))),React.createElement("div",{style:{fontSize:11,color:"#aaa",marginBottom:6}},"Agentes:"),React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},agents.filter(function(a){return a.department===k}).map(function(a){return React.createElement("span",{key:a.id,style:{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:20,background:d.bg,fontSize:11,color:d.color,fontWeight:500}},React.createElement("div",{style:{width:6,height:6,borderRadius:"50%",background:"#25D366"}}),a.name)})))})),routingLog.length>0&&React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#111",marginBottom:10}},"Historial de reasignaciones"),routingLog.map(function(log,i){return React.createElement("div",{key:i,style:{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid #f0f0ee",fontSize:12,flexWrap:"wrap"}},React.createElement("span",{style:{color:"#888",fontSize:11}},formatTime(log.created_at)),React.createElement("span",{style:{fontWeight:500,color:"#333"}},log.contact_name),log.from_department&&React.createElement(Badge,{type:"dept",data:log.from_department}),React.createElement("span",{style:{color:"#ccc"}},"->"),React.createElement(Badge,{type:"dept",data:log.to_department}),React.createElement("span",{style:{fontSize:10,color:"#bbb"}},"("+log.routed_by+")"))}))))
+
+    :view==="users"?
+      React.createElement("div",{style:{flex:1,padding:24,overflowY:"auto"}},React.createElement("div",{style:{maxWidth:800,margin:"0 auto"}},
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
+          React.createElement("div",null,React.createElement("h2",{style:{fontSize:18,fontWeight:600,color:"#111",marginBottom:4}},"Gestion de Usuarios"),React.createElement("p",{style:{fontSize:13,color:"#888"}},"Crear, editar y administrar accesos al CRM")),
+          React.createElement("button",{onClick:function(){setShowNewForm(!showNewForm)},style:{padding:"8px 18px",fontSize:13,borderRadius:8,border:"none",background:showNewForm?"#EB3B5A":"#185FA5",color:"#fff",cursor:"pointer",fontWeight:600}},showNewForm?"Cancelar":"+ Nuevo usuario")),
+
+        showNewForm&&React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:20,marginBottom:20,animation:"slideIn .3s ease"}},
+          React.createElement("div",{style:{fontSize:14,fontWeight:600,color:"#111",marginBottom:16}},"Crear nuevo usuario"),
+          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"NOMBRE COMPLETO"),React.createElement("input",{value:nfName,onChange:function(e){setNfName(e.target.value)},placeholder:"Juan Perez",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"USUARIO"),React.createElement("input",{value:nfUsername,onChange:function(e){setNfUsername(e.target.value)},placeholder:"juan.perez",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"CONTRASENA"),React.createElement("input",{value:nfPassword,onChange:function(e){setNfPassword(e.target.value)},placeholder:"minimo 4 caracteres",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"ROL"),React.createElement("select",{value:nfRole,onChange:function(e){setNfRole(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}},React.createElement("option",{value:"agent"},"Agente"),React.createElement("option",{value:"admin"},"Administrador"))),
+            nfRole!=="admin"&&React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"AREA"),React.createElement("select",{value:nfDept,onChange:function(e){setNfDept(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}},Object.entries(DEPARTMENTS).map(function(entry){return React.createElement("option",{key:entry[0],value:entry[0]},entry[1].label)})))),
+          React.createElement("button",{onClick:createUser,style:{marginTop:16,padding:"10px 24px",fontSize:13,borderRadius:8,border:"none",background:"#185FA5",color:"#fff",cursor:"pointer",fontWeight:600}},"Crear usuario")),
+
+        React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+          usersList.map(function(u){
+            var deptData=DEPARTMENTS[u.department];
+            return React.createElement("div",{key:u.id,style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:"14px 18px",display:"flex",alignItems:"center",gap:12,animation:"slideIn .3s ease",opacity:u.is_active?1:0.5}},
+              React.createElement("div",{style:{width:40,height:40,borderRadius:"50%",background:u.role==="admin"?"#F3EEFB":deptData?deptData.bg:"#f0f0ee",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:600,color:u.role==="admin"?"#8854D0":deptData?deptData.color:"#888",flexShrink:0}},getInitials(u.name)),
+              React.createElement("div",{style:{flex:1,minWidth:0}},
+                React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},
+                  React.createElement("span",{style:{fontSize:14,fontWeight:600,color:"#111"}},u.name),
+                  React.createElement("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:u.role==="admin"?"#F3EEFB":"#E6F1FB",color:u.role==="admin"?"#8854D0":"#185FA5",fontWeight:500}},u.role==="admin"?"Admin":"Agente"),
+                  !u.is_active&&React.createElement("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:20,background:"#FDEBEF",color:"#EB3B5A",fontWeight:500}},"Inactivo")),
+                React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},
+                  "@"+u.username+(deptData?" \u00B7 "+deptData.icon+" "+deptData.label:""))),
+              React.createElement("div",{style:{display:"flex",gap:6,flexShrink:0}},
+                React.createElement("button",{onClick:function(){resetUserPassword(u)},style:{padding:"5px 12px",fontSize:11,borderRadius:6,border:"1px solid #ddd",background:"#f5f5f3",color:"#666",cursor:"pointer"}},"Clave"),
+                React.createElement("button",{onClick:function(){toggleUserActive(u)},style:{padding:"5px 12px",fontSize:11,borderRadius:6,border:u.is_active?"1px solid #FAC775":"1px solid #C0DD97",background:u.is_active?"#FAEEDA":"#EAF3DE",color:u.is_active?"#854F0B":"#3B6D11",cursor:"pointer"}},u.is_active?"Desactivar":"Activar")))
+          }),
+          usersList.length===0&&React.createElement("div",{style:{textAlign:"center",padding:40,color:"#bbb",fontSize:13}},"No hay usuarios registrados"))))
+
     :
       React.createElement("div",{style:{flex:1,padding:24,overflowY:"auto"}},React.createElement("div",{style:{maxWidth:800,margin:"0 auto"}},React.createElement("h2",{style:{fontSize:18,fontWeight:600,color:"#111",marginBottom:20}},"Metricas"),metrics&&React.createElement(React.Fragment,null,React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:24}},[["Mensajes",metrics.totalMessages],["Contactos",metrics.totalContacts],["Conversaciones",metrics.totalConversations]].map(function(pair){return React.createElement("div",{key:pair[0],style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#111"}},pair[1]),React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},pair[0]))})),React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#111",marginBottom:12}},"Por canal"),(metrics.byChannel||[]).map(function(c){return React.createElement("div",{key:c.channel,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0f0ee",fontSize:12}},React.createElement("span",{style:{color:"#888"}},CHANNELS[c.channel]?CHANNELS[c.channel].label:c.channel),React.createElement("span",{style:{fontWeight:600,color:"#111"}},c.count))})),React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#111",marginBottom:12}},"Por area"),(metrics.byDepartment||[]).map(function(d){return React.createElement("div",{key:d.department,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0f0ee",fontSize:12}},React.createElement("span",{style:{color:"#888"}},DEPARTMENTS[d.department]?DEPARTMENTS[d.department].icon+" "+DEPARTMENTS[d.department].label:d.department),React.createElement("span",{style:{fontWeight:600,color:"#111"}},d.count))}))))))
   );
