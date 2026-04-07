@@ -17,7 +17,12 @@ function setup() {
   var newColumns = [
     ["messages", "media_type", "TEXT"],
     ["messages", "media_url", "TEXT"],
-    ["messages", "story_url", "TEXT"]
+    ["messages", "story_url", "TEXT"],
+    ["contacts", "conversation_stage", "TEXT DEFAULT 'consulta'"],
+    ["contacts", "quote_sent_at", "TEXT"],
+    ["contacts", "followup_count", "INTEGER DEFAULT 0"],
+    ["contacts", "last_followup_at", "TEXT"],
+    ["contacts", "lost_reason", "TEXT"]
   ];
   for (var i = 0; i < newColumns.length; i++) {
     try {
