@@ -55,6 +55,41 @@ router.put("/users/:id", function(req, res) {
   res.json(updated);
 });
 
+router.get("/auto-reply", function(req, res) {
+  var db = getDb();
+  try {
+    db.exec("CREATE TABLE IF NOT EXISTS auto_reply_settings (channel TEXT PRIMARY KEY, enabled INTEGER DEFAULT 0)");
+    var channels = ["whatsapp", "instagram", "facebook", "email"];
+    for (var i = 0; i < channels.length; i++) {
+      try { db.exec("INSERT OR IGNORE INTO auto_reply_settings (channel, enabled) VALUES ('" + channels[i] + "', 0)"); } catch (e) {}
+    }
+    var settings = db.prepare("SELECT channel, enabled FROM auto_reply_settings ORDER BY channel").all();
+    res.json(settings);
+  } catch (e) {
+    res.json([]);
+  }
+});
+
+router.put("/auto-reply/:channel", function(req, res) {
+  var db = getDb();
+  var channel = req.params.channel;
+  var enabled = req.body.enabled ? 1 : 0;
+  try {
+    db.exec("CREATE TABLE IF NOT EXISTS auto_reply_settings (channel TEXT PRIMARY KEY, enabled INTEGER DEFAULT 0)");
+    var existing = db.prepare("SELECT channel FROM auto_reply_settings WHERE channel = ?").get(channel);
+    if (existing) {
+      db.prepare("UPDATE auto_reply_settings SET enabled = ? WHERE channel = ?").run(enabled, channel);
+    } else {
+      db.prepare("INSERT INTO auto_reply_settings (channel, enabled) VALUES (?, ?)").run(channel, enabled);
+    }
+    var updated = db.prepare("SELECT channel, enabled FROM auto_reply_settings WHERE channel = ?").get(channel);
+    console.log("[AUTO-REPLY] " + channel + " -> " + (enabled ? "ACTIVADO" : "DESACTIVADO"));
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get("/contacts", function(req, res) {
   var db = getDb();
   var channel = req.query.channel;
