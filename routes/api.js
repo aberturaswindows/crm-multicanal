@@ -8,7 +8,22 @@ var whatsapp = require("../services/channels/whatsapp");
 var instagram = require("../services/channels/instagram");
 var facebook = require("../services/channels/facebook");
 var emailService = require("../services/channels/email");
+var fs = require("fs");
+var path = require("path");
+var MEDIA_DIR = fs.existsSync("/data") ? "/data/media" : path.join(__dirname, "..", "data", "media");
 
+router.get("/media/:filename", function(req, res) {
+  var filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+  var filepath = path.join(MEDIA_DIR, filename);
+  if (fs.existsSync(filepath)) {
+    var ext = path.extname(filename).toLowerCase();
+    var mimeTypes = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".pdf": "application/pdf", ".bin": "application/octet-stream" };
+    res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
+    res.sendFile(filepath);
+  } else {
+    res.status(404).json({ error: "Archivo no encontrado" });
+  }
+});
 router.post("/login", function(req, res) {
   var db = getDb();
   var username = req.body.username;
