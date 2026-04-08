@@ -8,6 +8,11 @@ var whatsapp = require("../services/channels/whatsapp");
 var instagram = require("../services/channels/instagram");
 var facebook = require("../services/channels/facebook");
 var email = require("../services/channels/email");
+var fs = require("fs");
+var path = require("path");
+
+var MEDIA_DIR = fs.existsSync("/data") ? "/data/media" : path.join(__dirname, "..", "data", "media");
+if (!fs.existsSync(MEDIA_DIR)) { try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch(e) {} }
 
 function isAutoReplyEnabled(channel) {
   try {
@@ -32,6 +37,25 @@ async function sendChannelMessage(channel, channelId, phoneLine, contactEmail, t
     sendResult = await email.sendMessage(contactEmail, "Re: Consulta - Aberturas Windows", text);
   }
   return sendResult;
+}
+
+async function downloadMediaIfNeeded(normalized) {
+  if (!normalized._needsDownload || !normalized.mediaUrl) return;
+  try {
+    var downloadFn = null;
+    if (normalized.channel === "instagram") {
+      downloadFn = instagram.downloadMedia;
+    } else if (normalized.channel === "facebook") {
+      downloadFn = facebook.downloadMedia;
+    }
+    if (downloadFn) {
+      var localUrl = await downloadFn(normalized.mediaUrl, normalized.mediaType, normalized.messageId);
+      normalized.mediaUrl = localUrl;
+      console.log("[MEDIA] Descargada y guardada: " + localUrl);
+    }
+  } catch (err) {
+    console.error("[MEDIA] Error descargando:", err.message);
+  }
 }
 
 async function handleAutoReply(contact, channel) {
@@ -83,6 +107,10 @@ async function handleAutoReply(contact, channel) {
 async function handleIncomingMessage(normalized) {
   var db = getDb();
   try {
+    if (normalized._needsDownload) {
+      await downloadMediaIfNeeded(normalized);
+    }
+
     var contact = db.prepare("SELECT * FROM contacts WHERE channel = ? AND channel_id = ?").get(normalized.channel, normalized.channelId);
     if (!contact) {
       var result = db.prepare("INSERT INTO contacts (name, phone, email, channel, channel_id, phone_line, department, status, origin, conversation_stage) VALUES (?, ?, ?, ?, ?, ?, 'ventas', 'lead', ?, 'consulta')").run(normalized.senderName || "Contacto nuevo", normalized.senderPhone || null, normalized.senderEmail || null, normalized.channel, normalized.channelId, normalized.phoneLine || null, normalized.channel);
@@ -106,6 +134,7 @@ async function handleIncomingMessage(normalized) {
 
     var textForAi = normalized.text || "";
     if (normalized.storyUrl) { textForAi = "[Respuesta a historia de Instagram] " + textForAi; }
+    if (normalized.mediaType === "audio") { textForAi = textForAi || "[El cliente envio un mensaje de audio]"; }
     var recentMessages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT 10").all(contact.id).reverse();
     var classification = await classifyMessage(textForAi, recentMessages);
     if (classification.department !== contact.department) {
@@ -113,7 +142,7 @@ async function handleIncomingMessage(normalized) {
       db.prepare("INSERT INTO routing_log (contact_id, from_department, to_department, reason, confidence) VALUES (?, ?, ?, ?, ?)").run(contact.id, contact.department, classification.department, classification.reason, classification.confidence);
     }
 
-    console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + (normalized.text || "").substring(0, 50) + " -> " + classification.department + " (" + classification.confidence + ") | Etapa: " + (contact.conversation_stage || "consulta"));
+    console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + (normalized.text || "").substring(0, 50) + (normalized.mediaType ? " [" + normalized.mediaType + "]" : "") + " -> " + classification.department + " (" + classification.confidence + ") | Etapa: " + (contact.conversation_stage || "consulta"));
 
     if (isAutoReplyEnabled(normalized.channel)) {
       var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
