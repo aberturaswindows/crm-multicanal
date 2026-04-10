@@ -128,7 +128,8 @@ async function classifyMessage(messageText, conversationHistory) {
   if (conversationHistory.length > 0) {
     var lines = conversationHistory.map(function(m) {
       var role = m.direction === "incoming" ? "Cliente" : "Agente";
-      return role + ": " + m.content;
+var texto = m.content === "[Audio]" ? "(envió un mensaje de voz que no se puede transcribir)" : m.content;
+return role + ": " + texto;
     });
     historyText = "\nHistorial previo de la conversacion:\n" + lines.join("\n") + "\n";
   }
