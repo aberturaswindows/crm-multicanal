@@ -70,7 +70,7 @@ async function transcribeAudio(mediaUrl) {
   try {
     var audioPath = null;
 
-    if (mediaUrl.startsWith("/media/")) {
+    if (mediaUrl.startsWith("/media/") || mediaUrl.startsWith("/api/media/")) {
       audioPath = path.join(MEDIA_DIR, path.basename(mediaUrl));
     } else if (mediaUrl.startsWith("http")) {
       var tmpPath = path.join(MEDIA_DIR, "tmp_audio_" + Date.now() + ".ogg");
