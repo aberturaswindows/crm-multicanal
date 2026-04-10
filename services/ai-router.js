@@ -117,6 +117,16 @@ function getArgentinaTime() {
   return { hour: hour, greeting: greeting };
 }
 
+function formatMessageForHistory(m) {
+  var role = m.direction === "incoming" ? "Cliente" : "Agente";
+  var texto = m.content;
+  if (texto === "[Audio]") texto = "(envio un mensaje de voz que no se puede transcribir, responde normalmente y pregunta en que podes ayudarlo)";
+  else if (texto === "[Imagen]") texto = "(envio una imagen)";
+  else if (texto === "[Video]") texto = "(envio un video)";
+  else if (texto === "[Archivo]") texto = "(envio un archivo)";
+  return role + ": " + texto;
+}
+
 async function classifyMessage(messageText, conversationHistory) {
   if (!conversationHistory) conversationHistory = [];
   var apiKey = process.env.ANTHROPIC_API_KEY;
@@ -127,9 +137,7 @@ async function classifyMessage(messageText, conversationHistory) {
   var historyText = "";
   if (conversationHistory.length > 0) {
     var lines = conversationHistory.map(function(m) {
-      var role = m.direction === "incoming" ? "Cliente" : "Agente";
-var texto = m.content === "[Audio]" ? "(envió un mensaje de voz que no se puede transcribir)" : m.content;
-return role + ": " + texto;
+      return formatMessageForHistory(m);
     });
     historyText = "\nHistorial previo de la conversacion:\n" + lines.join("\n") + "\n";
   }
@@ -178,8 +186,7 @@ async function generateSuggestion(contact, messages) {
   var dept = DEPARTMENTS[contact.department] || DEPARTMENTS.ventas;
   var lastMessages = messages.slice(-10);
   var history = lastMessages.map(function(m) {
-    var role = m.direction === "incoming" ? "Cliente" : "Agente";
-    return role + ": " + m.content;
+    return formatMessageForHistory(m);
   }).join("\n");
 
   var channelLabels = {
@@ -201,6 +208,7 @@ async function generateSuggestion(contact, messages) {
   prompt += "- Si preguntan por plazos, dar los rangos generales segun el material y color.\n";
   prompt += "- Invitar al cliente a visitar el showroom cuando sea apropiado.\n";
   prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
+  prompt += "- Si el cliente envio un mensaje de voz, responde normalmente y pregunta en que podes ayudarlo.\n";
   prompt += "- Respuestas breves: 2-3 oraciones maximo.\n\n";
   prompt += "La hora actual en Argentina es las " + argHour + '. Si saludas, usa "' + timeInfo.greeting + '".\n';
   prompt += "El cliente " + contact.name + " te contacto por " + (channelLabels[contact.channel] || contact.channel) + ".\n";
@@ -241,8 +249,7 @@ async function generateAutoReply(contact, messages) {
   var dept = DEPARTMENTS[contact.department] || DEPARTMENTS.ventas;
   var lastMessages = messages.slice(-15);
   var history = lastMessages.map(function(m) {
-    var role = m.direction === "incoming" ? "Cliente" : "Agente";
-    return role + ": " + m.content;
+    return formatMessageForHistory(m);
   }).join("\n");
 
   var channelLabels = {
@@ -291,7 +298,8 @@ async function generateAutoReply(contact, messages) {
   prompt += "- Tono: formal pero relajado, profesional y amable. Tutear al cliente.\n";
   prompt += "- NUNCA dar precios por mensaje.\n";
   prompt += "- Respuestas breves: 2-3 oraciones maximo.\n";
-  prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n\n";
+  prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
+  prompt += "- Si el cliente envio un mensaje de voz, responde normalmente y pregunta en que podes ayudarlo.\n\n";
   prompt += "La hora actual en Argentina es las " + argHour + '. Si saludas, usa "' + timeInfo.greeting + '".\n';
   prompt += "El cliente " + contact.name + " te contacto por " + (channelLabels[contact.channel] || contact.channel) + ".\n\n";
   prompt += "Historial de la conversacion:\n" + history + "\n\n";
@@ -352,8 +360,7 @@ async function generateFollowup(contact, messages) {
   var followupNum = (contact.followup_count || 0) + 1;
   var lastMessages = messages.slice(-10);
   var history = lastMessages.map(function(m) {
-    var role = m.direction === "incoming" ? "Cliente" : "Agente";
-    return role + ": " + m.content;
+    return formatMessageForHistory(m);
   }).join("\n");
 
   var timeInfo = getArgentinaTime();
