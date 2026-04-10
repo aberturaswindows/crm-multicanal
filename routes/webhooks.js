@@ -10,6 +10,8 @@ var facebook = require("../services/channels/facebook");
 var email = require("../services/channels/email");
 var fs = require("fs");
 var path = require("path");
+var axios = require("axios");
+var FormData = require("form-data");
 
 var MEDIA_DIR = fs.existsSync("/data") ? "/data/media" : path.join(__dirname, "..", "data", "media");
 if (!fs.existsSync(MEDIA_DIR)) { try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch(e) {} }
@@ -55,6 +57,57 @@ async function downloadMediaIfNeeded(normalized) {
     }
   } catch (err) {
     console.error("[MEDIA] Error descargando:", err.message);
+  }
+}
+
+async function transcribeAudio(mediaUrl) {
+  var apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.log("[TRANSCRIPCION] OPENAI_API_KEY no configurada, no se puede transcribir");
+    return null;
+  }
+
+  try {
+    var audioPath = null;
+
+    if (mediaUrl.startsWith("/media/")) {
+      audioPath = path.join(MEDIA_DIR, path.basename(mediaUrl));
+    } else if (mediaUrl.startsWith("http")) {
+      var tmpPath = path.join(MEDIA_DIR, "tmp_audio_" + Date.now() + ".ogg");
+      var response = await axios.get(mediaUrl, { responseType: "arraybuffer" });
+      fs.writeFileSync(tmpPath, response.data);
+      audioPath = tmpPath;
+    }
+
+    if (!audioPath || !fs.existsSync(audioPath)) {
+      console.log("[TRANSCRIPCION] Archivo de audio no encontrado: " + mediaUrl);
+      return null;
+    }
+
+    var form = new FormData();
+    form.append("file", fs.createReadStream(audioPath), { filename: "audio.ogg", contentType: "audio/ogg" });
+    form.append("model", "whisper-1");
+    form.append("language", "es");
+
+    var res = await axios.post("https://api.openai.com/v1/audio/transcriptions", form, {
+      headers: Object.assign({ "Authorization": "Bearer " + apiKey }, form.getHeaders()),
+      maxContentLength: 25 * 1024 * 1024,
+      timeout: 30000
+    });
+
+    var transcription = res.data && res.data.text ? res.data.text.trim() : null;
+
+    if (audioPath.indexOf("tmp_audio_") !== -1) {
+      try { fs.unlinkSync(audioPath); } catch(e) {}
+    }
+
+    if (transcription) {
+      console.log("[TRANSCRIPCION] OK: " + transcription.substring(0, 80) + "...");
+    }
+    return transcription;
+  } catch (err) {
+    console.error("[TRANSCRIPCION] Error:", err.response ? err.response.data : err.message);
+    return null;
   }
 }
 
@@ -111,6 +164,15 @@ async function handleIncomingMessage(normalized) {
       await downloadMediaIfNeeded(normalized);
     }
 
+    if (normalized.mediaType === "audio" && normalized.mediaUrl) {
+      var transcription = await transcribeAudio(normalized.mediaUrl);
+      if (transcription) {
+        normalized.text = transcription;
+        normalized._transcribed = true;
+        console.log("[AUDIO] Transcripcion exitosa para mensaje de " + (normalized.senderName || "desconocido"));
+      }
+    }
+
     var contact = db.prepare("SELECT * FROM contacts WHERE channel = ? AND channel_id = ?").get(normalized.channel, normalized.channelId);
     if (!contact) {
       var result = db.prepare("INSERT INTO contacts (name, phone, email, channel, channel_id, phone_line, department, status, origin, conversation_stage) VALUES (?, ?, ?, ?, ?, ?, 'ventas', 'lead', ?, 'consulta')").run(normalized.senderName || "Contacto nuevo", normalized.senderPhone || null, normalized.senderEmail || null, normalized.channel, normalized.channelId, normalized.phoneLine || null, normalized.channel);
@@ -130,11 +192,16 @@ async function handleIncomingMessage(normalized) {
       contact.conversation_stage = stage;
     }
 
-    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?)").run(contact.id, normalized.text, normalized.channel, normalized.messageId, normalized.mediaType || null, normalized.mediaUrl || null, normalized.storyUrl || null);
+    var contentToSave = normalized.text;
+    if (normalized._transcribed && normalized.mediaType === "audio") {
+      contentToSave = normalized.text;
+    }
+
+    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?)").run(contact.id, contentToSave, normalized.channel, normalized.messageId, normalized.mediaType || null, normalized.mediaUrl || null, normalized.storyUrl || null);
 
     var textForAi = normalized.text || "";
     if (normalized.storyUrl) { textForAi = "[Respuesta a historia de Instagram] " + textForAi; }
-    if (normalized.mediaType === "audio") { textForAi = textForAi || "[El cliente envio un mensaje de audio]"; }
+    if (normalized.mediaType === "audio" && !normalized._transcribed) { textForAi = textForAi || "[El cliente envio un mensaje de audio]"; }
     var recentMessages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT 10").all(contact.id).reverse();
     var classification = await classifyMessage(textForAi, recentMessages);
     if (classification.department !== contact.department) {
@@ -142,7 +209,7 @@ async function handleIncomingMessage(normalized) {
       db.prepare("INSERT INTO routing_log (contact_id, from_department, to_department, reason, confidence) VALUES (?, ?, ?, ?, ?)").run(contact.id, contact.department, classification.department, classification.reason, classification.confidence);
     }
 
-    console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + (normalized.text || "").substring(0, 50) + (normalized.mediaType ? " [" + normalized.mediaType + "]" : "") + " -> " + classification.department + " (" + classification.confidence + ") | Etapa: " + (contact.conversation_stage || "consulta"));
+    console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + (normalized.text || "").substring(0, 50) + (normalized.mediaType ? " [" + normalized.mediaType + (normalized._transcribed ? " transcripto" : "") + "]" : "") + " -> " + classification.department + " (" + classification.confidence + ") | Etapa: " + (contact.conversation_stage || "consulta"));
 
     if (isAutoReplyEnabled(normalized.channel)) {
       var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
