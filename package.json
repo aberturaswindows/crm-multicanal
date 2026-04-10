@@ -18,7 +18,8 @@
     "express-ws": "^5.0.2",
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "form-data": "^4.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
