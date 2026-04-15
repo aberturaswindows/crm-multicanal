@@ -41,6 +41,7 @@ function setup() {
     "contact_id INTEGER NOT NULL, " +
     "description TEXT DEFAULT '', " +
     "amount REAL DEFAULT 0, " +
+    "alternatives INTEGER DEFAULT 1, " +
     "status TEXT NOT NULL DEFAULT 'pendiente' CHECK(status IN ('pendiente','enviado','aprobado','rechazado','vencido')), " +
     "created_by TEXT NOT NULL DEFAULT 'Sin asignar', " +
     "channel TEXT DEFAULT '', " +
@@ -52,6 +53,8 @@ function setup() {
     "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
     "FOREIGN KEY (contact_id) REFERENCES contacts(id)" +
   ")");
+  // Add alternatives column if table already existed without it
+  try { db.exec("ALTER TABLE quotes ADD COLUMN alternatives INTEGER DEFAULT 1"); } catch (e) {}
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_contact ON quotes(contact_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_created_by ON quotes(created_by)");
