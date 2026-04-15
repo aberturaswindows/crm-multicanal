@@ -142,6 +142,7 @@ function App(){
   var qfn=useState("");var qfNotes=qfn[0];var setQfNotes=qfn[1];
   var qfalt=useState(1);var qfAlternatives=qfalt[0];var setQfAlternatives=qfalt[1];
   var qsearch=useState("");var quoteSearch=qsearch[0];var setQuoteSearch=qsearch[1];
+  var qfm=useState("all");var qFilterMonth=qfm[0];var setQFilterMonth=qfm[1];
 
   var loggedIn=!!user;
 
@@ -193,7 +194,31 @@ function App(){
   if(user.role==="admin")viewButtons.push("users");
 
   // Filter quotes by search
-  var filteredQuotes=quotes.filter(function(q){if(!quoteSearch)return true;var s=quoteSearch.toLowerCase();return(q.contact_name&&q.contact_name.toLowerCase().indexOf(s)!==-1)||(q.description&&q.description.toLowerCase().indexOf(s)!==-1)||(q.created_by&&q.created_by.toLowerCase().indexOf(s)!==-1)});
+  var filteredQuotes=quotes.filter(function(q){
+    if(qFilterMonth!=="all"&&q.created_at){var d=new Date(q.created_at.replace(" ","T")+"Z");var ym=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");if(ym!==qFilterMonth)return false}
+    if(!quoteSearch)return true;var s=quoteSearch.toLowerCase();return(q.contact_name&&q.contact_name.toLowerCase().indexOf(s)!==-1)||(q.description&&q.description.toLowerCase().indexOf(s)!==-1)||(q.created_by&&q.created_by.toLowerCase().indexOf(s)!==-1)});
+
+  // Compute month-filtered stats client-side
+  var monthFilteredQuotes=qFilterMonth==="all"?quotes:quotes.filter(function(q){if(!q.created_at)return false;var d=new Date(q.created_at.replace(" ","T")+"Z");var ym=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");return ym===qFilterMonth});
+  var filteredStats=null;
+  if(qFilterMonth!=="all"&&monthFilteredQuotes.length>=0){
+    var fTotal=monthFilteredQuotes.length;
+    var fAmount=monthFilteredQuotes.reduce(function(a,q){return a+(q.amount||0)},0);
+    var fAlts=monthFilteredQuotes.reduce(function(a,q){return a+(q.alternatives||1)},0);
+    var fApproved=monthFilteredQuotes.filter(function(q){return q.status==="aprobado"}).length;
+    var fRejected=monthFilteredQuotes.filter(function(q){return q.status==="rechazado"}).length;
+    var fRate=(fApproved+fRejected)>0?Math.round(fApproved/(fApproved+fRejected)*1000)/10:0;
+    var fByStatus={};monthFilteredQuotes.forEach(function(q){if(!fByStatus[q.status])fByStatus[q.status]={count:0,total_amount:0};fByStatus[q.status].count++;fByStatus[q.status].total_amount+=(q.amount||0)});
+    var fByUser={};monthFilteredQuotes.forEach(function(q){var u=q.created_by||"Sin asignar";if(!fByUser[u])fByUser[u]={count:0,total_amount:0,total_alternatives:0};fByUser[u].count++;fByUser[u].total_amount+=(q.amount||0);fByUser[u].total_alternatives+=(q.alternatives||1)});
+    filteredStats={total:fTotal,totalAmount:fAmount,totalAlternatives:fAlts,approvedRate:fRate,
+      byStatus:Object.keys(fByStatus).map(function(k){return{status:k,count:fByStatus[k].count,total_amount:fByStatus[k].total_amount}}).sort(function(a,b){return b.count-a.count}),
+      byUser:Object.keys(fByUser).map(function(k){return{created_by:k,count:fByUser[k].count,total_amount:fByUser[k].total_amount,total_alternatives:fByUser[k].total_alternatives}}).sort(function(a,b){return b.count-a.count}),
+      upcomingFollowups:(quoteStats?quoteStats.upcomingFollowups:[])}
+  }
+  var activeStats=filteredStats||quoteStats;
+
+  // Generate available months from quotes
+  var availableMonths=[];var seenMonths={};quotes.forEach(function(q){if(q.created_at){var d=new Date(q.created_at.replace(" ","T")+"Z");var ym=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");if(!seenMonths[ym]){seenMonths[ym]=true;var monthNames=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];availableMonths.push({value:ym,label:monthNames[d.getMonth()]+" "+d.getFullYear()})}}});availableMonths.sort(function(a,b){return b.value.localeCompare(a.value)});
 
   // Get unique users who created quotes for filter
   var quoteUsers=[];var seenUsers={};quotes.forEach(function(q){if(q.created_by&&!seenUsers[q.created_by]){seenUsers[q.created_by]=true;quoteUsers.push(q.created_by)}});
@@ -266,7 +291,7 @@ function App(){
                   React.createElement("input",{value:reminderNote,onChange:function(e){setReminderNote(e.target.value)},placeholder:"Nota del recordatorio...",style:{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",marginBottom:6}}),
                   React.createElement("button",{onClick:handleCreateReminder,disabled:!reminderDate,style:{padding:"6px 14px",fontSize:12,borderRadius:6,border:"none",background:reminderDate?"#185FA5":"#ccc",color:"#fff",cursor:reminderDate?"pointer":"not-allowed",fontWeight:600}},"Crear recordatorio")),
                 uploading&&React.createElement("div",{style:{marginBottom:8,padding:"8px 12px",background:"#E6F1FB",border:"1px solid #B5D4F4",borderRadius:8,fontSize:12,color:"#185FA5",display:"flex",alignItems:"center",gap:8}},React.createElement("div",{style:{width:6,height:6,borderRadius:"50%",background:"#185FA5",animation:"dotPulse 1s infinite"}}),"Subiendo archivo..."),
-                React.createElement("div",{style:{display:"flex",gap:8,alignItems:"flex-end"}},React.createElement("button",{onClick:function(){setShowClipMenu(!showClipMenu);setShowContactPicker(false);setShowReminderForm(false)},style:{width:38,height:38,borderRadius:10,border:"1px solid "+(showClipMenu?"#185FA5":"#ddd"),background:showClipMenu?"#E6F1FB":"#fff",color:showClipMenu?"#185FA5":"#888",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},"\u{1F4CE}"),React.createElement("textarea",{value:msgText,onChange:function(e){setMsgText(e.target.value)},onKeyDown:function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg()}},placeholder:"Escribir mensaje...",rows:1,style:{flex:1,resize:"none",border:"1px solid #ddd",borderRadius:10,padding:"9px 14px",fontSize:13,fontFamily:"inherit",color:"#111",outline:"none",minHeight:40,maxHeight:100}}),React.createElement("button",{onClick:sendMsg,style:{background:"#185FA5",color:"#fff",border:"none",borderRadius:10,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}},"Enviar"))))
+                React.createElement("div",{style:{display:"flex",gap:8,alignItems:"flex-end"}},React.createElement("button",{onClick:function(){setShowClipMenu(!showClipMenu);setShowContactPicker(false);setShowReminderForm(false)},style:{width:38,height:38,borderRadius:"50%",border:"none",background:showClipMenu?"#185FA5":"#f0f0ee",color:showClipMenu?"#fff":"#555",fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s",transform:showClipMenu?"rotate(45deg)":"rotate(0deg)",fontWeight:300,lineHeight:1}},"+"),React.createElement("textarea",{value:msgText,onChange:function(e){setMsgText(e.target.value)},onKeyDown:function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg()}},placeholder:"Escribir mensaje...",rows:1,style:{flex:1,resize:"none",border:"1px solid #ddd",borderRadius:10,padding:"9px 14px",fontSize:13,fontFamily:"inherit",color:"#111",outline:"none",minHeight:40,maxHeight:100}}),React.createElement("button",{onClick:sendMsg,style:{background:"#185FA5",color:"#fff",border:"none",borderRadius:10,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}},"Enviar"))))
           :React.createElement("div",{style:{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"#ccc",fontSize:14}},"Selecciona un contacto")),
 
         React.createElement("div",{style:{borderLeft:"1px solid #e2e2e0",background:"#fff",display:"flex",flexDirection:"column",overflow:"hidden"}},
@@ -301,28 +326,28 @@ function App(){
           React.createElement("button",{onClick:function(){if(showQuoteForm){setShowQuoteForm(false);resetQuoteForm()}else{openNewQuote()}},style:{padding:"8px 18px",fontSize:13,borderRadius:8,border:"none",background:showQuoteForm?"#EB3B5A":"#185FA5",color:"#fff",cursor:"pointer",fontWeight:600}},showQuoteForm?"Cancelar":"+ Nuevo presupuesto")),
 
         // Stats cards
-        quoteStats&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12,marginBottom:20}},
+        activeStats&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12,marginBottom:20}},
           React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#111"}},quoteStats.total),
+            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#111"}},activeStats.total),
             React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Presupuestos")),
           React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#8854D0"}},quoteStats.totalAlternatives||quoteStats.total),
+            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#8854D0"}},activeStats.totalAlternatives||activeStats.total),
             React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Alternativas")),
           React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#27AE60"}},formatMoney(quoteStats.totalAmount)),
+            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#27AE60"}},formatMoney(activeStats.totalAmount)),
             React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Monto total")),
           React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#2E86DE"}},quoteStats.approvedRate+"%"),
+            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#2E86DE"}},activeStats.approvedRate+"%"),
             React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Tasa aprobacion")),
           React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#FF9500"}},(quoteStats.upcomingFollowups||[]).length),
+            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#FF9500"}},(activeStats.upcomingFollowups||[]).length),
             React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Seguim. proximos"))),
 
         // Stats by user and status
-        quoteStats&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}},
+        activeStats&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}},
           React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
             React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#111",marginBottom:12}},"Por vendedor"),
-            (quoteStats.byUser||[]).map(function(u){return React.createElement("div",{key:u.created_by,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f0f0ee",fontSize:12}},
+            (activeStats.byUser||[]).map(function(u){return React.createElement("div",{key:u.created_by,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f0f0ee",fontSize:12}},
               React.createElement("span",{style:{color:"#333",fontWeight:500}},u.created_by),
               React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
                 React.createElement("span",{style:{color:"#888"}},u.count+" pres."),
@@ -330,16 +355,16 @@ function App(){
                 React.createElement("span",{style:{fontWeight:600,color:"#27AE60"}},formatMoney(u.total_amount))))})),
           React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
             React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#111",marginBottom:12}},"Por estado"),
-            (quoteStats.byStatus||[]).map(function(s){var sc=QUOTE_STATUS[s.status]||{label:s.status,color:"#888"};return React.createElement("div",{key:s.status,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f0f0ee",fontSize:12}},
+            (activeStats.byStatus||[]).map(function(s){var sc=QUOTE_STATUS[s.status]||{label:s.status,color:"#888"};return React.createElement("div",{key:s.status,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f0f0ee",fontSize:12}},
               React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},React.createElement(QuoteStatusBadge,{status:s.status})),
               React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
                 React.createElement("span",{style:{color:"#888"}},s.count),
                 React.createElement("span",{style:{fontWeight:600,color:sc.color}},formatMoney(s.total_amount))))}))),
 
         // Upcoming followups
-        quoteStats&&(quoteStats.upcomingFollowups||[]).length>0&&React.createElement("div",{style:{background:"#FFF4E5",borderRadius:12,border:"1px solid #FAC775",padding:16,marginBottom:20}},
+        activeStats&&(activeStats.upcomingFollowups||[]).length>0&&React.createElement("div",{style:{background:"#FFF4E5",borderRadius:12,border:"1px solid #FAC775",padding:16,marginBottom:20}},
           React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#854F0B",marginBottom:10}},"\u{1F514} Seguimientos proximos (3 dias)"),
-          (quoteStats.upcomingFollowups||[]).map(function(q){var days=daysUntil(q.followup_date);return React.createElement("div",{key:q.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #FAEEDA",fontSize:12}},
+          (activeStats.upcomingFollowups||[]).map(function(q){var days=daysUntil(q.followup_date);return React.createElement("div",{key:q.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #FAEEDA",fontSize:12}},
             React.createElement("div",null,
               React.createElement("span",{style:{fontWeight:500,color:"#333"}},q.contact_name),
               React.createElement("span",{style:{color:"#888",marginLeft:8}},formatMoney(q.amount))),
@@ -392,6 +417,9 @@ function App(){
         // Filters and search
         React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",marginBottom:16,flexWrap:"wrap"}},
           React.createElement("input",{value:quoteSearch,onChange:function(e){setQuoteSearch(e.target.value)},placeholder:"Buscar por cliente, descripcion o vendedor...",style:{flex:1,minWidth:200,padding:"8px 14px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}}),
+          React.createElement("select",{value:qFilterMonth,onChange:function(e){setQFilterMonth(e.target.value)},style:{padding:"8px 12px",borderRadius:8,border:qFilterMonth!=="all"?"1px solid #185FA5":"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",background:qFilterMonth!=="all"?"#E6F1FB":"#fff",color:qFilterMonth!=="all"?"#185FA5":"#333",fontWeight:qFilterMonth!=="all"?600:400}},
+            React.createElement("option",{value:"all"},"Todos los meses"),
+            availableMonths.map(function(m){return React.createElement("option",{key:m.value,value:m.value},m.label)})),
           React.createElement("select",{value:qFilterStatus,onChange:function(e){setQFilterStatus(e.target.value)},style:{padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",background:"#fff"}},
             React.createElement("option",{value:"all"},"Todos los estados"),
             Object.entries(QUOTE_STATUS).map(function(entry){return React.createElement("option",{key:entry[0],value:entry[0]},entry[1].label)})),
