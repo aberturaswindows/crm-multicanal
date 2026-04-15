@@ -281,4 +281,98 @@ router.get("/metrics", function(req, res) {
   res.json({ totalMessages: totalMessages, totalContacts: totalContacts, totalConversations: totalConversations, byChannel: byChannel, byDepartment: byDepartment, byStatus: byStatus, byStage: byStage, lostStats: lostStats });
 });
 
+// ============================================
+// PRESUPUESTOS
+// ============================================
+
+router.get("/quotes", function(req, res) {
+  var db = getDb();
+  var status = req.query.status;
+  var created_by = req.query.created_by;
+  var query = "SELECT q.*, c.name as contact_name, c.channel as contact_channel, c.phone as contact_phone, c.email as contact_email FROM quotes q JOIN contacts c ON q.contact_id = c.id WHERE 1=1";
+  var params = [];
+  if (status && status !== "all") { query += " AND q.status = ?"; params.push(status); }
+  if (created_by && created_by !== "all") { query += " AND q.created_by = ?"; params.push(created_by); }
+  query += " ORDER BY q.created_at DESC";
+  var stmt = db.prepare(query);
+  var quotes = params.length > 0 ? stmt.all.apply(stmt, params) : stmt.all();
+  res.json(quotes);
+});
+
+router.get("/quotes/stats", function(req, res) {
+  var db = getDb();
+  try {
+    var total = db.prepare("SELECT COUNT(*) as count FROM quotes").get().count;
+    var totalAmount = db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM quotes").get().total;
+    var byStatus = db.prepare("SELECT status, COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount FROM quotes GROUP BY status ORDER BY count DESC").all();
+    var byUser = db.prepare("SELECT created_by, COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount FROM quotes GROUP BY created_by ORDER BY count DESC").all();
+    var approvedRate = db.prepare("SELECT ROUND(CAST(SUM(CASE WHEN status = 'aprobado' THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) * 100, 1) as rate FROM quotes WHERE status IN ('aprobado', 'rechazado')").get().rate || 0;
+    var upcomingFollowups = db.prepare("SELECT q.*, c.name as contact_name FROM quotes q JOIN contacts c ON q.contact_id = c.id WHERE q.followup_date IS NOT NULL AND q.followup_date <= date('now', '+3 days') AND q.status IN ('pendiente', 'enviado') ORDER BY q.followup_date ASC LIMIT 20").all();
+    res.json({ total: total, totalAmount: totalAmount, byStatus: byStatus, byUser: byUser, approvedRate: approvedRate, upcomingFollowups: upcomingFollowups });
+  } catch (e) {
+    res.json({ total: 0, totalAmount: 0, byStatus: [], byUser: [], approvedRate: 0, upcomingFollowups: [] });
+  }
+});
+
+router.get("/quotes/:id", function(req, res) {
+  var db = getDb();
+  var quote = db.prepare("SELECT q.*, c.name as contact_name, c.channel as contact_channel, c.phone as contact_phone, c.email as contact_email FROM quotes q JOIN contacts c ON q.contact_id = c.id WHERE q.id = ?").get(req.params.id);
+  if (!quote) return res.status(404).json({ error: "Presupuesto no encontrado" });
+  res.json(quote);
+});
+
+router.post("/quotes", function(req, res) {
+  var db = getDb();
+  var contact_id = req.body.contact_id;
+  var description = req.body.description || "";
+  var amount = req.body.amount || 0;
+  var status = req.body.status || "pendiente";
+  var created_by = req.body.created_by || "Sin asignar";
+  var channel = req.body.channel || "";
+  var received_at = req.body.received_at || null;
+  var delivery_date = req.body.delivery_date || null;
+  var followup_date = req.body.followup_date || null;
+  var notes = req.body.notes || "";
+  if (!contact_id) return res.status(400).json({ error: "contact_id es requerido" });
+  var contact = db.prepare("SELECT id FROM contacts WHERE id = ?").get(contact_id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  var result = db.prepare("INSERT INTO quotes (contact_id, description, amount, status, created_by, channel, received_at, delivery_date, followup_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(contact_id, description, amount, status, created_by, channel, received_at, delivery_date, followup_date, notes);
+  var quote = db.prepare("SELECT q.*, c.name as contact_name FROM quotes q JOIN contacts c ON q.contact_id = c.id WHERE q.id = ?").get(result.lastInsertRowid);
+  console.log("[PRESUPUESTO] Nuevo #" + quote.id + " - " + quote.contact_name + " - $" + amount + " por " + created_by);
+  res.json(quote);
+});
+
+router.put("/quotes/:id", function(req, res) {
+  var db = getDb();
+  var updates = [];
+  var values = [];
+  if (req.body.description !== undefined) { updates.push("description = ?"); values.push(req.body.description); }
+  if (req.body.amount !== undefined) { updates.push("amount = ?"); values.push(req.body.amount); }
+  if (req.body.status !== undefined) { updates.push("status = ?"); values.push(req.body.status); }
+  if (req.body.created_by !== undefined) { updates.push("created_by = ?"); values.push(req.body.created_by); }
+  if (req.body.channel !== undefined) { updates.push("channel = ?"); values.push(req.body.channel); }
+  if (req.body.received_at !== undefined) { updates.push("received_at = ?"); values.push(req.body.received_at); }
+  if (req.body.delivery_date !== undefined) { updates.push("delivery_date = ?"); values.push(req.body.delivery_date); }
+  if (req.body.followup_date !== undefined) { updates.push("followup_date = ?"); values.push(req.body.followup_date); }
+  if (req.body.notes !== undefined) { updates.push("notes = ?"); values.push(req.body.notes); }
+  if (updates.length === 0) return res.status(400).json({ error: "Nada que actualizar" });
+  updates.push("updated_at = CURRENT_TIMESTAMP");
+  values.push(req.params.id);
+  db.prepare("UPDATE quotes SET " + updates.join(", ") + " WHERE id = ?").run(values);
+  var updated = db.prepare("SELECT q.*, c.name as contact_name FROM quotes q JOIN contacts c ON q.contact_id = c.id WHERE q.id = ?").get(req.params.id);
+  if (req.body.status) {
+    console.log("[PRESUPUESTO] #" + req.params.id + " -> " + req.body.status);
+  }
+  res.json(updated);
+});
+
+router.delete("/quotes/:id", function(req, res) {
+  var db = getDb();
+  var quote = db.prepare("SELECT id FROM quotes WHERE id = ?").get(req.params.id);
+  if (!quote) return res.status(404).json({ error: "Presupuesto no encontrado" });
+  db.prepare("DELETE FROM quotes WHERE id = ?").run(req.params.id);
+  console.log("[PRESUPUESTO] Eliminado #" + req.params.id);
+  res.json({ success: true });
+});
+
 module.exports = router;
