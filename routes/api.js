@@ -10,20 +10,203 @@ var facebook = require("../services/channels/facebook");
 var emailService = require("../services/channels/email");
 var fs = require("fs");
 var path = require("path");
+var multer = require("multer");
+var axios = require("axios");
 var MEDIA_DIR = fs.existsSync("/data") ? "/data/media" : path.join(__dirname, "..", "data", "media");
+
+// Ensure media directory exists
+if (!fs.existsSync(MEDIA_DIR)) { fs.mkdirSync(MEDIA_DIR, { recursive: true }); }
+
+// Multer config for file uploads
+var storage = multer.diskStorage({
+  destination: function(req, file, cb) { cb(null, MEDIA_DIR); },
+  filename: function(req, file, cb) {
+    var ext = path.extname(file.originalname).toLowerCase();
+    var safeName = "upload_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8) + ext;
+    cb(null, safeName);
+  }
+});
+var upload = multer({
+  storage: storage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: function(req, file, cb) {
+    var allowed = [".jpg",".jpeg",".png",".gif",".webp",".mp4",".mov",".avi",".mp3",".ogg",".wav",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".csv",".zip",".rar"];
+    var ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.indexOf(ext) !== -1) { cb(null, true); } else { cb(new Error("Tipo de archivo no permitido: " + ext)); }
+  }
+});
 
 router.get("/media/:filename", function(req, res) {
   var filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
   var filepath = path.join(MEDIA_DIR, filename);
   if (fs.existsSync(filepath)) {
     var ext = path.extname(filename).toLowerCase();
-    var mimeTypes = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".pdf": "application/pdf", ".bin": "application/octet-stream" };
+    var mimeTypes = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".pdf": "application/pdf", ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xls": "application/vnd.ms-excel", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".txt": "text/plain", ".csv": "text/csv", ".zip": "application/zip", ".bin": "application/octet-stream" };
     res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
+    res.setHeader("Content-Disposition", "inline; filename=\"" + filename + "\"");
     res.sendFile(filepath);
   } else {
     res.status(404).json({ error: "Archivo no encontrado" });
   }
 });
+
+// ============================================
+// FILE UPLOAD
+// ============================================
+
+router.post("/contacts/:id/upload", upload.single("file"), async function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  if (!req.file) return res.status(400).json({ error: "No se recibio ningun archivo" });
+
+  var ext = path.extname(req.file.filename).toLowerCase();
+  var imageExts = [".jpg",".jpeg",".png",".gif",".webp"];
+  var videoExts = [".mp4",".mov",".avi"];
+  var audioExts = [".mp3",".ogg",".wav"];
+  var mediaType = "file";
+  var contentLabel = "[Archivo]";
+  if (imageExts.indexOf(ext) !== -1) { mediaType = "image"; contentLabel = "[Imagen]"; }
+  else if (videoExts.indexOf(ext) !== -1) { mediaType = "video"; contentLabel = "[Video]"; }
+  else if (audioExts.indexOf(ext) !== -1) { mediaType = "audio"; contentLabel = "[Audio]"; }
+
+  var mediaUrl = "/api/media/" + req.file.filename;
+  var agentName = req.body.agent_name || "Agente";
+  var caption = req.body.caption || "";
+  var msgContent = caption ? caption : contentLabel;
+
+  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, ?, ?, ?, ?)").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl);
+
+  // Send via channel
+  var sendResult = { success: true, simulated: true };
+  var publicUrl = (process.env.RAILWAY_PUBLIC_DOMAIN ? "https://" + process.env.RAILWAY_PUBLIC_DOMAIN : (req.protocol + "://" + req.get("host"))) + mediaUrl;
+
+  try {
+    if (contact.channel === "facebook" && process.env.FACEBOOK_PAGE_TOKEN) {
+      var fbType = mediaType === "file" ? "file" : mediaType;
+      var fbRes = await axios.post("https://graph.facebook.com/v18.0/me/messages", {
+        recipient: { id: contact.channel_id },
+        message: { attachment: { type: fbType, payload: { url: publicUrl, is_reusable: false } } }
+      }, { params: { access_token: process.env.FACEBOOK_PAGE_TOKEN } });
+      sendResult = { success: true, message_id: fbRes.data.message_id };
+      console.log("[UPLOAD] Facebook attachment sent to " + contact.name + ": " + req.file.filename);
+    } else if (contact.channel === "instagram" && process.env.INSTAGRAM_TOKEN) {
+      var igToken = process.env.INSTAGRAM_TOKEN || process.env.FACEBOOK_PAGE_TOKEN;
+      if (mediaType === "image") {
+        var igRes = await axios.post("https://graph.facebook.com/v18.0/me/messages", {
+          recipient: { id: contact.channel_id },
+          message: { attachment: { type: "image", payload: { url: publicUrl } } }
+        }, { params: { access_token: igToken } });
+        sendResult = { success: true, message_id: igRes.data.message_id };
+      } else {
+        sendResult = { success: true, simulated: true, note: "Instagram solo soporta imagenes como adjuntos" };
+      }
+      console.log("[UPLOAD] Instagram attachment to " + contact.name + ": " + req.file.filename);
+    } else {
+      console.log("[UPLOAD] " + contact.channel + " attachment saved for " + contact.name + ": " + req.file.filename + " (envio pendiente)");
+    }
+  } catch (err) {
+    console.error("[UPLOAD] Error enviando por " + contact.channel + ":", err.response ? err.response.data : err.message);
+    sendResult = { success: false, error: err.message };
+  }
+
+  var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
+  res.json({ message: message, sendResult: sendResult, file: { filename: req.file.filename, size: req.file.size, mediaType: mediaType, url: mediaUrl } });
+});
+
+// ============================================
+// SHARE CONTACT
+// ============================================
+
+router.post("/contacts/:id/share-contact", async function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  var sharedId = req.body.shared_contact_id;
+  var agentName = req.body.agent_name || "Agente";
+  var shared = db.prepare("SELECT * FROM contacts WHERE id = ?").get(sharedId);
+  if (!shared) return res.status(404).json({ error: "Contacto a compartir no encontrado" });
+
+  var parts = [];
+  parts.push("Contacto: " + shared.name);
+  if (shared.phone) parts.push("Tel: " + shared.phone);
+  if (shared.email) parts.push("Email: " + shared.email);
+  var content = parts.join("\n");
+
+  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, ?)").run(contact.id, content, contact.channel, agentName);
+
+  var sendResult = { success: true, simulated: true };
+  try {
+    if (contact.channel === "facebook") {
+      sendResult = await facebook.sendMessage(contact.channel_id, content);
+    } else if (contact.channel === "instagram") {
+      sendResult = await instagram.sendMessage(contact.channel_id, content);
+    } else if (contact.channel === "whatsapp") {
+      sendResult = await whatsapp.sendMessage(contact.channel_id, content, contact.phone_line || 1);
+    }
+  } catch (err) {
+    sendResult = { success: false, error: err.message };
+  }
+
+  var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
+  console.log("[CONTACTO] " + agentName + " compartio " + shared.name + " con " + contact.name);
+  res.json({ message: message, sendResult: sendResult });
+});
+
+// ============================================
+// REMINDERS
+// ============================================
+
+router.get("/reminders", function(req, res) {
+  var db = getDb();
+  try {
+    var reminders = db.prepare("SELECT r.*, c.name as contact_name, c.channel as contact_channel FROM reminders r JOIN contacts c ON r.contact_id = c.id WHERE r.is_completed = 0 ORDER BY r.reminder_at ASC").all();
+    res.json(reminders);
+  } catch (e) {
+    res.json([]);
+  }
+});
+
+router.post("/reminders", function(req, res) {
+  var db = getDb();
+  var contact_id = req.body.contact_id;
+  var reminder_at = req.body.reminder_at;
+  var note = req.body.note || "";
+  var created_by = req.body.created_by || "Agente";
+  if (!contact_id || !reminder_at) return res.status(400).json({ error: "contact_id y reminder_at son requeridos" });
+  var contact = db.prepare("SELECT id, name FROM contacts WHERE id = ?").get(contact_id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  var result = db.prepare("INSERT INTO reminders (contact_id, reminder_at, note, created_by) VALUES (?, ?, ?, ?)").run(contact_id, reminder_at, note, created_by);
+  var reminder = db.prepare("SELECT r.*, c.name as contact_name FROM reminders r JOIN contacts c ON r.contact_id = c.id WHERE r.id = ?").get(result.lastInsertRowid);
+  console.log("[RECORDATORIO] " + created_by + " -> " + contact.name + " para " + reminder_at + (note ? ": " + note : ""));
+  res.json(reminder);
+});
+
+router.put("/reminders/:id", function(req, res) {
+  var db = getDb();
+  if (req.body.is_completed !== undefined) {
+    db.prepare("UPDATE reminders SET is_completed = ? WHERE id = ?").run(req.body.is_completed ? 1 : 0, req.params.id);
+  }
+  if (req.body.reminder_at !== undefined) {
+    db.prepare("UPDATE reminders SET reminder_at = ? WHERE id = ?").run(req.body.reminder_at, req.params.id);
+  }
+  if (req.body.note !== undefined) {
+    db.prepare("UPDATE reminders SET note = ? WHERE id = ?").run(req.body.note, req.params.id);
+  }
+  var updated = db.prepare("SELECT r.*, c.name as contact_name FROM reminders r JOIN contacts c ON r.contact_id = c.id WHERE r.id = ?").get(req.params.id);
+  res.json(updated);
+});
+
+router.delete("/reminders/:id", function(req, res) {
+  var db = getDb();
+  db.prepare("DELETE FROM reminders WHERE id = ?").run(req.params.id);
+  res.json({ success: true });
+});
+
+// ============================================
+// AUTH & USERS
+// ============================================
+
 router.post("/login", function(req, res) {
   var db = getDb();
   var username = req.body.username;
@@ -71,6 +254,10 @@ router.put("/users/:id", function(req, res) {
   res.json(updated);
 });
 
+// ============================================
+// AUTO-REPLY
+// ============================================
+
 router.get("/auto-reply", function(req, res) {
   var db = getDb();
   try {
@@ -105,6 +292,10 @@ router.put("/auto-reply/:channel", function(req, res) {
     res.status(500).json({ error: e.message });
   }
 });
+
+// ============================================
+// STAGES
+// ============================================
 
 router.put("/contacts/:id/stage", function(req, res) {
   var db = getDb();
@@ -155,6 +346,10 @@ router.get("/lost-stats", function(req, res) {
     res.json({ stats: [], total: 0 });
   }
 });
+
+// ============================================
+// CONTACTS
+// ============================================
 
 router.get("/contacts", function(req, res) {
   var db = getDb();
@@ -250,6 +445,10 @@ router.post("/contacts/:id/reclassify", async function(req, res) {
   res.json({ classification: classification, contact: db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id) });
 });
 
+// ============================================
+// AGENTS & ROUTING
+// ============================================
+
 router.get("/agents", function(req, res) {
   var db = getDb();
   var agents = db.prepare("SELECT * FROM agents WHERE is_active = 1 ORDER BY department, name").all();
@@ -267,6 +466,10 @@ router.get("/routing-log", function(req, res) {
   var logs = db.prepare("SELECT r.*, c.name as contact_name FROM routing_log r JOIN contacts c ON r.contact_id = c.id ORDER BY r.created_at DESC LIMIT 50").all();
   res.json(logs);
 });
+
+// ============================================
+// METRICS
+// ============================================
 
 router.get("/metrics", function(req, res) {
   var db = getDb();
