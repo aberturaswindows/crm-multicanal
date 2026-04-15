@@ -53,21 +53,34 @@ function setup() {
     "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
     "FOREIGN KEY (contact_id) REFERENCES contacts(id)" +
   ")");
-  // Add alternatives column if table already existed without it
   try { db.exec("ALTER TABLE quotes ADD COLUMN alternatives INTEGER DEFAULT 1"); } catch (e) {}
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_contact ON quotes(contact_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_created_by ON quotes(created_by)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_followup ON quotes(followup_date)");
+  db.exec("CREATE TABLE IF NOT EXISTS reminders (" +
+    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+    "contact_id INTEGER NOT NULL, " +
+    "reminder_at TEXT NOT NULL, " +
+    "note TEXT DEFAULT '', " +
+    "is_completed INTEGER DEFAULT 0, " +
+    "created_by TEXT NOT NULL, " +
+    "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+    "FOREIGN KEY (contact_id) REFERENCES contacts(id)" +
+  ")");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_reminders_date ON reminders(reminder_at)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_reminders_contact ON reminders(contact_id)");
   console.log("Base de datos creada correctamente en:", DB_PATH);
   var contacts = db.prepare("SELECT COUNT(*) as count FROM contacts").get();
   var agents = db.prepare("SELECT COUNT(*) as count FROM agents").get();
   var lines = db.prepare("SELECT COUNT(*) as count FROM phone_lines").get();
   var quotes = db.prepare("SELECT COUNT(*) as count FROM quotes").get();
+  var reminders = db.prepare("SELECT COUNT(*) as count FROM reminders WHERE is_completed = 0").get();
   console.log("   " + contacts.count + " contactos");
   console.log("   " + agents.count + " agentes");
   console.log("   " + lines.count + " lineas telefonicas");
   console.log("   " + quotes.count + " presupuestos");
+  console.log("   " + reminders.count + " recordatorios pendientes");
   db.close();
 }
 if (require.main === module) {
