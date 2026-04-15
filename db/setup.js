@@ -36,13 +36,35 @@ function setup() {
       db.exec("INSERT OR IGNORE INTO auto_reply_settings (channel, enabled) VALUES ('" + channels[j] + "', 0)");
     } catch (e) {}
   }
+  db.exec("CREATE TABLE IF NOT EXISTS quotes (" +
+    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+    "contact_id INTEGER NOT NULL, " +
+    "description TEXT DEFAULT '', " +
+    "amount REAL DEFAULT 0, " +
+    "status TEXT NOT NULL DEFAULT 'pendiente' CHECK(status IN ('pendiente','enviado','aprobado','rechazado','vencido')), " +
+    "created_by TEXT NOT NULL DEFAULT 'Sin asignar', " +
+    "channel TEXT DEFAULT '', " +
+    "received_at TEXT, " +
+    "delivery_date TEXT, " +
+    "followup_date TEXT, " +
+    "notes TEXT DEFAULT '', " +
+    "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+    "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+    "FOREIGN KEY (contact_id) REFERENCES contacts(id)" +
+  ")");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_contact ON quotes(contact_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_created_by ON quotes(created_by)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_followup ON quotes(followup_date)");
   console.log("Base de datos creada correctamente en:", DB_PATH);
   var contacts = db.prepare("SELECT COUNT(*) as count FROM contacts").get();
   var agents = db.prepare("SELECT COUNT(*) as count FROM agents").get();
   var lines = db.prepare("SELECT COUNT(*) as count FROM phone_lines").get();
+  var quotes = db.prepare("SELECT COUNT(*) as count FROM quotes").get();
   console.log("   " + contacts.count + " contactos");
   console.log("   " + agents.count + " agentes");
   console.log("   " + lines.count + " lineas telefonicas");
+  console.log("   " + quotes.count + " presupuestos");
   db.close();
 }
 if (require.main === module) {
