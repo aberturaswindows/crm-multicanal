@@ -304,13 +304,14 @@ router.get("/quotes/stats", function(req, res) {
   try {
     var total = db.prepare("SELECT COUNT(*) as count FROM quotes").get().count;
     var totalAmount = db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM quotes").get().total;
+    var totalAlternatives = db.prepare("SELECT COALESCE(SUM(alternatives), 0) as total FROM quotes").get().total;
     var byStatus = db.prepare("SELECT status, COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount FROM quotes GROUP BY status ORDER BY count DESC").all();
-    var byUser = db.prepare("SELECT created_by, COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount FROM quotes GROUP BY created_by ORDER BY count DESC").all();
+    var byUser = db.prepare("SELECT created_by, COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount, COALESCE(SUM(alternatives), 0) as total_alternatives FROM quotes GROUP BY created_by ORDER BY count DESC").all();
     var approvedRate = db.prepare("SELECT ROUND(CAST(SUM(CASE WHEN status = 'aprobado' THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) * 100, 1) as rate FROM quotes WHERE status IN ('aprobado', 'rechazado')").get().rate || 0;
     var upcomingFollowups = db.prepare("SELECT q.*, c.name as contact_name FROM quotes q JOIN contacts c ON q.contact_id = c.id WHERE q.followup_date IS NOT NULL AND q.followup_date <= date('now', '+3 days') AND q.status IN ('pendiente', 'enviado') ORDER BY q.followup_date ASC LIMIT 20").all();
-    res.json({ total: total, totalAmount: totalAmount, byStatus: byStatus, byUser: byUser, approvedRate: approvedRate, upcomingFollowups: upcomingFollowups });
+    res.json({ total: total, totalAmount: totalAmount, totalAlternatives: totalAlternatives, byStatus: byStatus, byUser: byUser, approvedRate: approvedRate, upcomingFollowups: upcomingFollowups });
   } catch (e) {
-    res.json({ total: 0, totalAmount: 0, byStatus: [], byUser: [], approvedRate: 0, upcomingFollowups: [] });
+    res.json({ total: 0, totalAmount: 0, totalAlternatives: 0, byStatus: [], byUser: [], approvedRate: 0, upcomingFollowups: [] });
   }
 });
 
@@ -326,6 +327,7 @@ router.post("/quotes", function(req, res) {
   var contact_id = req.body.contact_id;
   var description = req.body.description || "";
   var amount = req.body.amount || 0;
+  var alternatives = req.body.alternatives || 1;
   var status = req.body.status || "pendiente";
   var created_by = req.body.created_by || "Sin asignar";
   var channel = req.body.channel || "";
@@ -336,9 +338,9 @@ router.post("/quotes", function(req, res) {
   if (!contact_id) return res.status(400).json({ error: "contact_id es requerido" });
   var contact = db.prepare("SELECT id FROM contacts WHERE id = ?").get(contact_id);
   if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
-  var result = db.prepare("INSERT INTO quotes (contact_id, description, amount, status, created_by, channel, received_at, delivery_date, followup_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(contact_id, description, amount, status, created_by, channel, received_at, delivery_date, followup_date, notes);
+  var result = db.prepare("INSERT INTO quotes (contact_id, description, amount, alternatives, status, created_by, channel, received_at, delivery_date, followup_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(contact_id, description, amount, alternatives, status, created_by, channel, received_at, delivery_date, followup_date, notes);
   var quote = db.prepare("SELECT q.*, c.name as contact_name FROM quotes q JOIN contacts c ON q.contact_id = c.id WHERE q.id = ?").get(result.lastInsertRowid);
-  console.log("[PRESUPUESTO] Nuevo #" + quote.id + " - " + quote.contact_name + " - $" + amount + " por " + created_by);
+  console.log("[PRESUPUESTO] Nuevo #" + quote.id + " - " + quote.contact_name + " - $" + amount + " (" + alternatives + " alt.) por " + created_by);
   res.json(quote);
 });
 
@@ -348,6 +350,7 @@ router.put("/quotes/:id", function(req, res) {
   var values = [];
   if (req.body.description !== undefined) { updates.push("description = ?"); values.push(req.body.description); }
   if (req.body.amount !== undefined) { updates.push("amount = ?"); values.push(req.body.amount); }
+  if (req.body.alternatives !== undefined) { updates.push("alternatives = ?"); values.push(req.body.alternatives); }
   if (req.body.status !== undefined) { updates.push("status = ?"); values.push(req.body.status); }
   if (req.body.created_by !== undefined) { updates.push("created_by = ?"); values.push(req.body.created_by); }
   if (req.body.channel !== undefined) { updates.push("channel = ?"); values.push(req.body.channel); }
