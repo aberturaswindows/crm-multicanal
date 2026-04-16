@@ -102,6 +102,10 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
         sendResult = { success: true, simulated: true, note: "Instagram solo soporta imagenes como adjuntos" };
       }
       console.log("[UPLOAD] Instagram attachment to " + contact.name + ": " + req.file.filename);
+    } else if (contact.channel === "whatsapp" && process.env.WHATSAPP_TOKEN) {
+      var waResult = await whatsapp.sendMedia(contact.channel_id, mediaType, publicUrl, caption, contact.phone_line || 1);
+      sendResult = waResult;
+      console.log("[UPLOAD] WhatsApp attachment sent to " + contact.name + ": " + req.file.filename);
     } else {
       console.log("[UPLOAD] " + contact.channel + " attachment saved for " + contact.name + ": " + req.file.filename + " (envio pendiente)");
     }
