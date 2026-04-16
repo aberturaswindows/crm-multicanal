@@ -31,6 +31,7 @@ var useState=React.useState;var useEffect=React.useEffect;var useRef=React.useRe
 var API=window.location.origin+"/api";
 var DEPARTMENTS={ventas:{label:"Ventas",color:"#E87B35",bg:"#FDF2E9",icon:"\u{1F4B0}"},soporte:{label:"Soporte",color:"#2E86DE",bg:"#E8F4FD",icon:"\u{1F527}"},admin:{label:"Admin",color:"#8854D0",bg:"#F3EEFB",icon:"\u{1F4CB}"},reclamos:{label:"Reclamos",color:"#EB3B5A",bg:"#FDEBEF",icon:"\u26A0\uFE0F"}};
 var CHANNELS={whatsapp:{label:"WhatsApp",color:"#25D366",bg:"#E7F9EE",icon:"WA",textColor:"#1A7F3F"},instagram:{label:"Instagram",color:"#E4405F",bg:"#FCE9ED",icon:"IG",textColor:"#A12D43"},facebook:{label:"Facebook",color:"#1877F2",bg:"#E6F0FE",icon:"FB",textColor:"#1260C4"},email:{label:"Email",color:"#5F6368",bg:"#F0F0F2",icon:"\u2709",textColor:"#3C3F43"},telefono:{label:"Telefono",color:"#FF9500",bg:"#FFF4E5",icon:"\u{1F4DE}",textColor:"#A66200"}};
+var VISIBLE_CHANNELS=["whatsapp","instagram","facebook"];
 var STAGE_CONFIG={consulta:{label:"Consulta inicial",color:"#888",bg:"#f0f0ee",icon:"\u{1F4AC}"},recopilando_datos:{label:"Recopilando datos",color:"#E87B35",bg:"#FDF2E9",icon:"\u{1F4DD}"},datos_completos:{label:"Armar presupuesto",color:"#8854D0",bg:"#F3EEFB",icon:"\u{1F4CB}"},presupuesto_enviado:{label:"Presupuesto enviado",color:"#2E86DE",bg:"#E8F4FD",icon:"\u{1F4E9}"},seguimiento:{label:"En seguimiento",color:"#FF9500",bg:"#FFF4E5",icon:"\u{1F514}"},cerrado_ganado:{label:"Ganado",color:"#27AE60",bg:"#E7F9EE",icon:"\u{1F389}"},cerrado_perdido:{label:"Perdido",color:"#EB3B5A",bg:"#FDEBEF",icon:"\u274C"},sin_respuesta:{label:"Sin respuesta",color:"#999",bg:"#f0f0ee",icon:"\u{1F6AB}"}};
 var LOST_REASONS={precio:"Precio excedia presupuesto",competencia:"Eligio otra empresa",plazos:"Tiempos de entrega",obra_pausada:"Obra postergada/cancelada",otro:"Otro motivo"};
 var QUOTE_STATUS={pendiente:{label:"Pendiente",color:"#FF9500",bg:"#FFF4E5"},enviado:{label:"Enviado",color:"#2E86DE",bg:"#E8F4FD"},aprobado:{label:"Aprobado",color:"#27AE60",bg:"#E7F9EE"},rechazado:{label:"Rechazado",color:"#EB3B5A",bg:"#FDEBEF"},vencido:{label:"Vencido",color:"#999",bg:"#f0f0ee"}};
@@ -240,7 +241,7 @@ function App(){
             React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#999",letterSpacing:"0.05em",marginBottom:6}},"CANALES"),
             React.createElement("div",{style:{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}},
               React.createElement("button",{onClick:function(){setFilterCh("all")},style:{fontSize:11,padding:"3px 10px",borderRadius:20,cursor:"pointer",border:filterCh==="all"?"1px solid #999":"1px solid #ddd",background:filterCh==="all"?"#f0f0ee":"#fff",color:filterCh==="all"?"#111":"#888"}},"Todos"),
-              Object.entries(CHANNELS).map(function(entry){var k=entry[0];var v=entry[1];return React.createElement("button",{key:k,onClick:function(){setFilterCh(k)},style:{fontSize:11,padding:"3px 10px",borderRadius:20,cursor:"pointer",border:filterCh===k?"1px solid "+v.color:"1px solid #ddd",background:filterCh===k?v.bg:"#fff",color:filterCh===k?v.textColor:"#888"}},v.icon)})),
+              VISIBLE_CHANNELS.map(function(k){var v=CHANNELS[k];if(!v)return null;return React.createElement("button",{key:k,onClick:function(){setFilterCh(k)},style:{fontSize:11,padding:"3px 10px",borderRadius:20,cursor:"pointer",border:filterCh===k?"1px solid "+v.color:"1px solid #ddd",background:filterCh===k?v.bg:"#fff",color:filterCh===k?v.textColor:"#888"}},v.icon)})),
             user.role==="admin"&&React.createElement("div",null,
               React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#999",letterSpacing:"0.05em",marginBottom:6}},"AREAS"),
               React.createElement("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},
@@ -484,7 +485,7 @@ function App(){
               React.createElement("div",{style:{fontSize:14,fontWeight:600,color:"#111"}},"Respuesta Automatica por Canal"),
               React.createElement("div",{style:{fontSize:12,color:"#888"}},"Cuando esta activado, la IA responde automaticamente los mensajes entrantes"))),
           React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:10}},
-            ["instagram","facebook","whatsapp","email"].map(function(chKey){
+            VISIBLE_CHANNELS.map(function(chKey){
               var chData=CHANNELS[chKey];var setting=autoReply.find(function(a){return a.channel===chKey});var enabled=setting?setting.enabled:0;
               return React.createElement("div",{key:chKey,style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:enabled?"#E7F9EE":"#f9f9f7",borderRadius:8,border:enabled?"1px solid #C0DD97":"1px solid #e5e5e3"}},
                 React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},
