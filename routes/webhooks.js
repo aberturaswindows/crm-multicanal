@@ -49,6 +49,8 @@ async function downloadMediaIfNeeded(normalized) {
       downloadFn = instagram.downloadMedia;
     } else if (normalized.channel === "facebook") {
       downloadFn = facebook.downloadMedia;
+    } else if (normalized.channel === "whatsapp") {
+      downloadFn = whatsapp.downloadMedia;
     }
     if (downloadFn) {
       var localUrl = await downloadFn(normalized.mediaUrl, normalized.mediaType, normalized.messageId);
