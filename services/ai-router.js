@@ -28,21 +28,41 @@ var COMPANY_KNOWLEDGE = [
   "- Puertas automaticas: AUDOOR.",
   "- Toldos: IPROA.",
   "",
-  "COLORES EN ALUMINIO:",
-  "- Pintados (los mas comunes): blanco, bronce colonial, negro. Hay otros colores disponibles.",
-  "- Microtexturados: gris, marron claro, negro, gris metalizado, etc.",
-  "- Anodizados: natural, gris, champagne, peltre, bronce claro, bronce medio, bronce oscuro, negro. Pueden ser lijados o pulidos brillantes.",
+  "HERRAJES:",
+  "- PVC REHAU: herrajes marca GU, ASSA ABLOY, rodamientos PABOSSE.",
+  "- Aluminio FLAMIA: herrajes marca TANIT, GIESSE, PABOSSE.",
+  "- IMPORTANTE: No mencionar ni afirmar que usamos herrajes de otras marcas. Si no estas seguro de un dato tecnico sobre herrajes u otros componentes, NO lo inventes. Consulta internamente o responde al cliente 'lo consultamos con el area tecnica y te confirmamos'.",
+  "",
+  "TERMINACIONES EN ALUMINIO:",
+  "Pintados: Blanco, Bronce Colonial, Negro, Gris Oscuro, Simil Anodizado Natural, Simil Madera.",
+  "Microtexturados: Marron Claro, Marron Oscuro, Negro, Gris Oscuro, Gris Metalizado.",
+  "Anodizados: Natural, Gris, Peltre, Champagne, Bronce Claro, Bronce Medio, Bronce Oscuro, Negro.",
+  "Los anodizados tienen variantes: Liso, Lijado, Pulido Brillante y Pulido Mate.",
+  "",
+  "SOBRE LA PINTURA EN POLVO TERMOCONVERTIBLE:",
+  "Proceso de 3 etapas: pre-tratamiento (desengrase, mordentado, conversion con titanio), aplicacion electrostatica robotica del polvo, y curado a temperatura.",
+  "Tipos: Epoxi (interiores, resistencia quimica), Poliester (exteriores, resistencia UV), Hibrido (interiores/decoracion), Poliuretano (exteriores, brillo duradero).",
+  "Acabados: brillantes, mates, semimates, texturados y metalizados. Se pintan entre 60 y 90 micrones.",
+  "Mantenimiento: limpieza con jabon neutro y agua. Evitar contacto con cal, cemento y yeso (manchas permanentes).",
+  "",
+  "SOBRE EL ANODIZADO:",
+  "Proceso electroquimico que forma una capa de alumina protectora sobre el aluminio. A diferencia de la pintura, pasa a formar parte de la estructura del metal.",
+  "Ventajas: resistencia a corrosion, abrasion, rayos UV. Ideal para zonas costeras. No se pela ni escama. Aspecto metalico unico.",
+  "Los colores se logran por electrocoloracion con sales de estano sobre los poros de la capa anodica. Colores estables a rayos UV.",
+  "Mantenimiento: jabon neutro y agua. Evitar sustancias alcalinas/acidas fuertes, cloro, lavandina, soda caustica.",
   "",
   "COLORES EN PVC:",
   "- Color base: blanco.",
   "- Foliados: toda la gama de foliados de REHAU.",
+  "- Mas info PVC REHAU: https://www.rehau.com/ar-es/ventanas-de-pvc/elegir-ventanas-rehau",
   "",
   "PLAZOS DE ENTREGA (desde medicion final):",
-  "- Aluminio pintado (blanco, bronce colonial, negro): 45 a 60 dias habiles.",
+  "- Aluminio pintado blanco: 35 a 45 dias habiles (plazo minimo, es la terminacion mas rapida).",
+  "- Aluminio otros pintados (bronce colonial, negro, etc.): 45 a 60 dias habiles.",
   "- Aluminio microtexturado y anodizado: 70 a 90 dias habiles.",
   "- PVC blanco: 45 a 60 dias habiles.",
   "- PVC foliado: 70 a 90 dias habiles.",
-  "- Los plazos dependen de la cantidad de aberturas y si incluye o no instalacion.",
+  "- Los plazos dependen de la cantidad de aberturas, si incluye o no instalacion, y si es con o sin colocacion.",
   "",
   "PROCESO DE VENTA:",
   "1. El cliente consulta y le pedimos los siguientes datos para cotizar:",
@@ -74,8 +94,21 @@ var COMPANY_KNOWLEDGE = [
   "- Para puertas ventanas corredizas con riel inferior embutido: dejar sin colocar la ultima hilera de ceramico frente a la abertura.",
   "- Consultas tecnicas y de fabricacion: 261-526-3244 o medicionesyservicios@aberturaswindows.com.ar",
   "",
+  "SERVICIO POST-VENTA / SERVICIO DE CARPINTERIA:",
+  "- SOLO hacemos servicio en aberturas fabricadas e instaladas por nosotros.",
+  "- Si alguien solicita servicio de carpinteria, PRIMERO verificar que la obra sea nuestra:",
+  "  1. Preguntar a nombre de quien estaba la obra.",
+  "  2. Preguntar cuando fue colocada.",
+  "- Si se confirma que es obra nuestra, informar sobre la VISITA TECNICA:",
+  "  - Un tecnico coordina una visita al domicilio para verificar el problema.",
+  "  - Costo de la visita tecnica: $70.000 IVA incluido.",
+  "  - Ese monto se descuenta del presupuesto del servicio si el cliente lo contrata.",
+  "  - Si no contrata el servicio, los $70.000 NO se devuelven.",
+  "  - Despues de la visita, el departamento tecnico envia una cotizacion del servicio.",
+  "- Si la obra NO es nuestra, informar amablemente que no realizamos servicio en aberturas de otros fabricantes.",
+  "",
   "IMPORTANTE:",
-  "- Trabajamos sobre pedido, NO tenemos productos estandar ni entregas inmediatas.",
+  "- Trabajamos sobre pedido, NO tenemos productos estandar ni entregas inmediatas. No tenemos aberturas en stock.",
   "- Cada cotizacion se realiza de manera detallada y personalizada.",
   "- No dar precios por mensaje, siempre ofrecer armar un presupuesto formal.",
   "- Los descuentos, promociones bancarias y condiciones de pago van especificados en cada presupuesto."
@@ -145,7 +178,7 @@ async function classifyMessage(messageText, conversationHistory) {
   var prompt = "Sos un sistema de clasificacion de consultas para Aberturas Windows, empresa de aberturas de aluminio y PVC en Mendoza, Argentina.\n\n";
   prompt += "Departamentos disponibles:\n";
   prompt += "- ventas: Consultas comerciales, cotizaciones, productos, precios, medidas, colores, tipos de aberturas, presupuestos\n";
-  prompt += "- soporte: Consultas tecnicas sobre medicion, colocacion, estado de fabricacion, problemas con aberturas instaladas\n";
+  prompt += "- soporte: Consultas tecnicas sobre medicion, colocacion, estado de fabricacion, problemas con aberturas instaladas, servicio post-venta de carpinteria\n";
   prompt += "- admin: Facturas, pagos, datos fiscales, CUIT, transferencias, comprobantes\n";
   prompt += "- reclamos: Quejas, insatisfaccion, devoluciones, problemas graves con el servicio\n";
   prompt += historyText + "\n";
@@ -202,6 +235,8 @@ async function generateSuggestion(contact, messages) {
   prompt += "CONOCIMIENTO DE LA EMPRESA:\n" + COMPANY_KNOWLEDGE + "\n\n";
   prompt += "REGLAS DE RESPUESTA:\n";
   prompt += "- Tono: formal pero relajado, profesional y amable. Tutear al cliente.\n";
+  prompt += "- NO repitas 'Perfecto' ni 'Excelente' en cada respuesta. Varia las expresiones.\n";
+  prompt += "- NUNCA inventes informacion tecnica que no este en tu conocimiento. Si no sabes algo, decile al cliente que lo consultas con el area tecnica.\n";
   prompt += "- NUNCA dar precios por mensaje. Siempre ofrecer armar un presupuesto formal.\n";
   prompt += "- Si el cliente pregunta por un producto, explicar brevemente y pedir los datos para cotizar.\n";
   prompt += "- Si el cliente ya dio los datos para cotizar, confirmar que se va a preparar el presupuesto en hasta 72 hs habiles.\n";
@@ -209,6 +244,7 @@ async function generateSuggestion(contact, messages) {
   prompt += "- Invitar al cliente a visitar el showroom cuando sea apropiado.\n";
   prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
   prompt += "- Si el cliente envio un mensaje de voz, responde normalmente y pregunta en que podes ayudarlo.\n";
+  prompt += "- Si el cliente consulta por servicio de carpinteria/post-venta, seguir el protocolo de verificacion de obra propia.\n";
   prompt += "- Respuestas breves: 2-3 oraciones maximo.\n\n";
   prompt += "La hora actual en Argentina es las " + argHour + '. Si saludas, usa "' + timeInfo.greeting + '".\n';
   prompt += "El cliente " + contact.name + " te contacto por " + (channelLabels[contact.channel] || contact.channel) + ".\n";
@@ -274,6 +310,7 @@ async function generateAutoReply(contact, messages) {
     stageInstructions += "- Si el cliente esta interesado, pedi los datos que faltan para cotizar (de a 2-3 datos por mensaje, no todos juntos).\n";
     stageInstructions += "- Si el cliente ya proporciono TODOS los datos necesarios, confirma que vas a preparar el presupuesto en hasta 72 hs habiles.\n";
     stageInstructions += "- NO pidas datos que el cliente ya dio en mensajes anteriores.\n";
+    stageInstructions += "- Si el cliente consulta por servicio de carpinteria/reparacion, seguir el protocolo de servicio post-venta: verificar que sea obra nuestra, informar sobre visita tecnica ($70.000 IVA inc.).\n";
   } else if (stage === "presupuesto_enviado" || stage === "seguimiento") {
     stageInstructions = "ETAPA ACTUAL: Seguimiento de presupuesto.\n";
     stageInstructions += "Seguimiento numero: " + ((contact.followup_count || 0) + 1) + " de 5.\n";
@@ -296,6 +333,8 @@ async function generateAutoReply(contact, messages) {
   prompt += stageInstructions + "\n";
   prompt += "REGLAS GENERALES:\n";
   prompt += "- Tono: formal pero relajado, profesional y amable. Tutear al cliente.\n";
+  prompt += "- NO repitas 'Perfecto' ni 'Excelente' en cada respuesta. Varia las expresiones.\n";
+  prompt += "- NUNCA inventes informacion tecnica. Si no sabes, decile al cliente que lo consultas con el area tecnica.\n";
   prompt += "- NUNCA dar precios por mensaje.\n";
   prompt += "- Respuestas breves: 2-3 oraciones maximo.\n";
   prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
@@ -373,6 +412,7 @@ async function generateFollowup(contact, messages) {
   prompt += "- Tono: formal pero relajado, profesional, amable. Tutear.\n";
   prompt += "- Mensaje breve de seguimiento (2-3 oraciones).\n";
   prompt += "- NO seas insistente ni presiones.\n";
+  prompt += "- NO repitas 'Perfecto' ni 'Excelente'.\n";
   prompt += '- Si saludas, usa "' + timeInfo.greeting + '".\n';
 
   if (followupNum === 1) {
@@ -422,7 +462,7 @@ function classifyByKeywords(text) {
   var lower = text.toLowerCase();
   var rules = {
     ventas: ["precio", "cotizacion", "presupuesto", "comprar", "costo", "descuento", "oferta", "contratar", "producto", "catalogo", "promocion", "cuanto sale", "interesado", "abertura", "ventana", "puerta", "aluminio", "pvc", "dvh", "vidrio", "corrediza", "mampara", "persiana", "mosquitero", "porton", "baranda", "toldo", "cortina"],
-    soporte: ["no funciona", "error", "problema", "tecnico", "falla", "ayuda", "configurar", "instalar", "medicion", "colocacion", "fabricacion", "cuando esta", "estado", "pedido", "entrega"],
+    soporte: ["no funciona", "error", "problema", "tecnico", "falla", "ayuda", "configurar", "instalar", "medicion", "colocacion", "fabricacion", "cuando esta", "estado", "pedido", "entrega", "servicio", "reparacion", "carpinteria", "visita tecnica"],
     admin: ["factura", "pago", "cobro", "recibo", "cuit", "datos fiscales", "transferencia", "suscripcion", "vencimiento", "comprobante"],
     reclamos: ["reclamo", "queja", "insatisfecho", "mal servicio", "devolver", "reembolso", "devolucion", "pesimo", "inaceptable", "denuncia", "enojado"]
   };
