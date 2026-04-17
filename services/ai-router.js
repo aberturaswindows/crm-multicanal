@@ -66,14 +66,15 @@ var COMPANY_KNOWLEDGE = [
   "",
   "PROCESO DE VENTA:",
   "1. El cliente consulta y le pedimos los siguientes datos para cotizar:",
-  "   - Nombre para el presupuesto",
+  "   - Nombre y apellido para el presupuesto",
+  "   - Numero de telefono (si no lo tenemos)",
   "   - Si incluye o no instalacion",
   "   - Direccion de la obra (si requiere instalacion)",
+  "   - Que producto quiere cotizar (tipo de abertura: corrediza, de abrir, etc.)",
+  "   - Tiene plano de carpinterias (si o no)",
   "   - Color de la perfileria",
   "   - Tipo de vidrio: DVH (doble vidrio hermetico) o vidrio simple",
-  "   - Tipo de abertura (corrediza, de abrir, etc.)",
   "   - Medidas aproximadas",
-  "   - Plano de carpinterias y plantas si tiene",
   "2. Se arma el presupuesto en hasta 72 hs habiles.",
   "3. Se envia el presupuesto por WhatsApp o mail segun prefiera el cliente.",
   "4. Lo ideal es que el cliente visite el showroom para ver las lineas en exhibicion.",
@@ -115,12 +116,14 @@ var COMPANY_KNOWLEDGE = [
 ].join("\n");
 
 var QUOTE_DATA_FIELDS = [
-  "nombre para el presupuesto",
+  "nombre y apellido para el presupuesto",
+  "numero de telefono (si no lo tenemos)",
   "si incluye o no instalacion",
   "direccion de la obra (si incluye instalacion)",
+  "que producto quiere cotizar (tipo de abertura: corrediza, de abrir, etc.)",
+  "tiene plano de carpinterias (si o no)",
   "color de la perfileria",
   "tipo de vidrio (DVH o simple)",
-  "tipo de abertura (corrediza, de abrir, etc.)",
   "medidas aproximadas"
 ];
 
@@ -274,12 +277,12 @@ async function generateSuggestion(contact, messages) {
 
 async function generateAutoReply(contact, messages) {
   var apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { reply: null, stageChange: null };
+  if (!apiKey) return { reply: null, stageChange: null, resumen: null };
 
   var stage = contact.conversation_stage || "consulta";
 
   if (stage === "datos_completos" || stage === "cerrado_ganado" || stage === "cerrado_perdido" || stage === "sin_respuesta") {
-    return { reply: null, stageChange: null };
+    return { reply: null, stageChange: null, resumen: null };
   }
 
   var dept = DEPARTMENTS[contact.department] || DEPARTMENTS.ventas;
@@ -343,19 +346,24 @@ async function generateAutoReply(contact, messages) {
   prompt += "El cliente " + contact.name + " te contacto por " + (channelLabels[contact.channel] || contact.channel) + ".\n\n";
   prompt += "Historial de la conversacion:\n" + history + "\n\n";
   prompt += 'Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato:\n';
-  prompt += '{"reply":"tu respuesta al cliente","stage_assessment":"consulta|recopilando_datos|datos_completos|cliente_acepta|cliente_rechaza|continuar"}';
-  prompt += '\n\nDonde stage_assessment es:\n';
+  prompt += '{"reply":"tu respuesta al cliente","stage_assessment":"consulta|recopilando_datos|datos_completos|cliente_acepta|cliente_rechaza|continuar","resumen":null}\n';
+  prompt += '\nDonde stage_assessment es:\n';
   prompt += '- "consulta": el cliente recien consulta, no pidio cotizacion aun\n';
   prompt += '- "recopilando_datos": el cliente esta interesado y estamos pidiendo/recibiendo datos\n';
   prompt += '- "datos_completos": el cliente ya dio TODOS los datos necesarios para cotizar\n';
   prompt += '- "cliente_acepta": el cliente confirma que va a hacer el trabajo con nosotros\n';
   prompt += '- "cliente_rechaza": el cliente dice que NO va a hacer el trabajo\n';
   prompt += '- "continuar": seguir en la etapa actual sin cambios\n';
+  prompt += '\nIMPORTANTE - FICHA RESUMEN:\n';
+  prompt += 'Cuando stage_assessment sea "datos_completos", DEBES incluir el campo "resumen" con los datos recopilados de la conversacion:\n';
+  prompt += '{"reply":"tu respuesta","stage_assessment":"datos_completos","resumen":{"nombre":"nombre y apellido del cliente","telefono":"numero o No proporcionado","direccion":"direccion de la obra o No requiere instalacion","producto":"que quiere cotizar","plano":"Si/No","color":"color elegido","vidrio":"DVH o Simple","medidas":"medidas indicadas","instalacion":"Si/No"}}\n';
+  prompt += 'Completa cada campo del resumen con lo que el cliente haya dicho en la conversacion. Si algun dato no fue mencionado, pone "No indicado".\n';
+  prompt += 'Si stage_assessment NO es "datos_completos", deja resumen como null.\n';
 
   try {
     var res = await axios.post("https://api.anthropic.com/v1/messages", {
       model: "claude-sonnet-4-20250514",
-      max_tokens: 400,
+      max_tokens: 600,
       messages: [{ role: "user", content: prompt }]
     }, {
       headers: {
@@ -370,6 +378,7 @@ async function generateAutoReply(contact, messages) {
       var parsed = JSON.parse(text);
       var reply = parsed.reply || null;
       var assessment = parsed.stage_assessment || "continuar";
+      var resumen = parsed.resumen || null;
 
       var stageChange = null;
       if (assessment === "datos_completos" && stage !== "datos_completos") {
@@ -382,13 +391,13 @@ async function generateAutoReply(contact, messages) {
         stageChange = "cerrado_perdido";
       }
 
-      return { reply: reply, stageChange: stageChange };
+      return { reply: reply, stageChange: stageChange, resumen: resumen };
     } catch (parseErr) {
-      return { reply: text, stageChange: null };
+      return { reply: text, stageChange: null, resumen: null };
     }
   } catch (err) {
     console.error("Error generando auto-reply:", err.message);
-    return { reply: null, stageChange: null };
+    return { reply: null, stageChange: null, resumen: null };
   }
 }
 
