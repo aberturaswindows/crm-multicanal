@@ -65,6 +65,17 @@ function AudioPlayer(props){
 
 function renderMedia(m){var elements=[];if(m.story_url){elements.push(React.createElement("div",{key:"story",style:{marginBottom:6,padding:6,background:"#f0e6f6",borderRadius:8,border:"1px solid #d9c4e8"}},React.createElement("div",{style:{fontSize:10,color:"#8854D0",fontWeight:600,marginBottom:4}},"Respuesta a tu historia"),React.createElement("img",{src:m.story_url,style:{maxWidth:"100%",maxHeight:150,borderRadius:6,display:"block"},onError:function(e){e.target.style.display="none"}})))}if(m.media_type==="image"&&m.media_url){elements.push(React.createElement("img",{key:"img",src:m.media_url,style:{maxWidth:"100%",maxHeight:250,borderRadius:8,display:"block",cursor:"pointer"},onClick:function(){window.open(m.media_url,"_blank")},onError:function(e){e.target.alt="Imagen no disponible";e.target.style.padding="20px";e.target.style.background="#f5f5f5"}}))}if(m.media_type==="video"&&m.media_url){elements.push(React.createElement("video",{key:"vid",src:m.media_url,controls:true,style:{maxWidth:"100%",maxHeight:250,borderRadius:8,display:"block"}}))}if(m.media_type==="audio"&&m.media_url){elements.push(React.createElement(AudioPlayer,{key:"aud",m:m,isOut:m.direction==="outgoing"}))}if(m.content&&m.content!=="[Imagen]"&&m.content!=="[Video]"&&m.content!=="[Audio]"&&m.content!=="[Archivo]"){elements.push(React.createElement("span",{key:"txt"},m.content))}else if(m.media_type==="file"&&m.media_url){elements.push(React.createElement("a",{key:"file",href:m.media_url,target:"_blank",style:{color:"#185FA5",textDecoration:"underline",fontSize:12}},"Descargar archivo"))}else if(!m.media_type&&m.content){elements.push(React.createElement("span",{key:"txt"},m.content))}return elements}
 
+function renderSystemMessage(m,i){
+  var contentText=m.content;
+  contentText=contentText.replace("\u{1F4CB} FICHA PARA COTIZAR\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n","").replace("\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501","");
+  return React.createElement("div",{key:m.id||i,style:{margin:"12px auto",maxWidth:"95%",border:"2px solid #5DCAA5",borderRadius:12,background:"linear-gradient(135deg,#E1F5EE,#f0faf6)",padding:"14px 16px",animation:"slideIn .25s ease"}},
+    React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10,paddingBottom:8,borderBottom:"1px solid #9FE1CB"}},
+      React.createElement("div",{style:{width:10,height:10,borderRadius:"50%",background:"#1D9E75"}}),
+      React.createElement("span",{style:{fontSize:14,fontWeight:700,color:"#085041"}},"\u{1F4CB} Ficha para cotizar"),
+      React.createElement("span",{style:{fontSize:11,color:"#0F6E56",marginLeft:"auto",background:"#d0f0e0",padding:"2px 8px",borderRadius:8}},"Solo visible en CRM")),
+    React.createElement("pre",{style:{margin:0,fontFamily:"inherit",fontSize:13,color:"#085041",whiteSpace:"pre-wrap",lineHeight:1.8}},contentText))
+}
+
 function getInitials(name){return(name||"?").split(" ").map(function(w){return w[0]}).join("").substring(0,2).toUpperCase()}
 function formatTime(ts){if(!ts)return"";var d=new Date(ts.replace(" ","T")+"Z");return d.getHours()+":"+String(d.getMinutes()).padStart(2,"0")}
 function formatDate(ts){if(!ts)return"-";var d=new Date(ts.replace(" ","T")+"Z");return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()}
@@ -130,14 +141,12 @@ function App(){
   var fileInputRef=useRef(null);
   var mediaInputRef=useRef(null);
 
-  // Quotes state
   var qls=useState([]);var quotes=qls[0];var setQuotes=qls[1];
   var qsts=useState(null);var quoteStats=qsts[0];var setQuoteStats=qsts[1];
   var qfs=useState("all");var qFilterStatus=qfs[0];var setQFilterStatus=qfs[1];
   var qfu=useState("all");var qFilterUser=qfu[0];var setQFilterUser=qfu[1];
   var sqf=useState(false);var showQuoteForm=sqf[0];var setShowQuoteForm=sqf[1];
   var qedit=useState(null);var editingQuote=qedit[0];var setEditingQuote=qedit[1];
-  // Quote form fields
   var qfc=useState("");var qfContactId=qfc[0];var setQfContactId=qfc[1];
   var qfd=useState("");var qfDesc=qfd[0];var setQfDesc=qfd[1];
   var qfa=useState("");var qfAmount=qfa[0];var setQfAmount=qfa[1];
@@ -181,13 +190,11 @@ function App(){
   var toggleAutoReply=function(channel,currentEnabled){var newState=currentEnabled?0:1;fetch(API+"/auto-reply/"+channel,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:newState})}).then(function(r){return r.json()}).then(function(){loadAutoReply()}).catch(function(){alert("Error al actualizar")})};
   var changeStage=async function(stage,lostReason){try{var body={stage:stage};if(lostReason)body.lost_reason=lostReason;var res=await fetch(API+"/contacts/"+selected.id+"/stage",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});var updated=await res.json();setSelected(updated);loadContacts();setShowLostReasons(false);if(stage==="presupuesto_enviado")alert("Presupuesto marcado como enviado. El seguimiento automatico comenzara en 3 dias si el cliente no responde.");if(stage==="cerrado_ganado")alert("Felicitaciones! Cliente ganado.")}catch(err){console.error(err)}};
 
-  // Attachment functions
   var handleFileUpload=async function(file){if(!file||!selected)return;setUploading(true);setShowClipMenu(false);try{var formData=new FormData();formData.append("file",file);formData.append("agent_name",user.name);var res=await fetch(API+"/contacts/"+selected.id+"/upload",{method:"POST",body:formData});var data=await res.json();if(res.ok){var msgs=await fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()});setMessages(msgs);loadContacts();setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}else{alert(data.error||"Error al subir archivo")}}catch(e){alert("Error de conexion al subir archivo")}setUploading(false)};
   var handleShareContact=async function(sharedId){if(!selected)return;setShowContactPicker(false);setShowClipMenu(false);try{var res=await fetch(API+"/contacts/"+selected.id+"/share-contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shared_contact_id:sharedId,agent_name:user.name})});if(res.ok){var msgs=await fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()});setMessages(msgs);loadContacts();setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}else{var err=await res.json();alert(err.error||"Error al compartir contacto")}}catch(e){alert("Error de conexion")}};
   var handleCreateReminder=async function(){if(!selected||!reminderDate)return;var reminderAt=reminderDate+(reminderTime?"T"+reminderTime:"T09:00");try{var res=await fetch(API+"/reminders",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contact_id:selected.id,reminder_at:reminderAt,note:reminderNote,created_by:user.name})});if(res.ok){alert("Recordatorio creado para "+reminderDate+(reminderTime?" a las "+reminderTime:""));setShowReminderForm(false);setShowClipMenu(false);setReminderDate("");setReminderTime("");setReminderNote("")}else{var err=await res.json();alert(err.error||"Error al crear recordatorio")}}catch(e){alert("Error de conexion")}};
   var filteredContactsForPicker=contacts.filter(function(c){if(!contactPickerSearch)return true;return c.name.toLowerCase().indexOf(contactPickerSearch.toLowerCase())!==-1});
 
-  // Quote functions
   var resetQuoteForm=function(){setQfContactId("");setQfDesc("");setQfAmount("");setQfStatus("pendiente");setQfCreatedBy(user.name);setQfReceivedAt("");setQfDeliveryDate("");setQfFollowupDate("");setQfNotes("");setQfAlternatives(1);setEditingQuote(null)};
   var openNewQuote=function(contactId){resetQuoteForm();if(contactId)setQfContactId(String(contactId));setQfCreatedBy(user.name);setShowQuoteForm(true)};
   var openEditQuote=function(q){setEditingQuote(q);setQfContactId(String(q.contact_id));setQfDesc(q.description||"");setQfAmount(q.amount?String(q.amount):"");setQfStatus(q.status);setQfCreatedBy(q.created_by||"");setQfReceivedAt(q.received_at||"");setQfDeliveryDate(q.delivery_date||"");setQfFollowupDate(q.followup_date||"");setQfNotes(q.notes||"");setQfAlternatives(q.alternatives||1);setShowQuoteForm(true)};
@@ -200,12 +207,10 @@ function App(){
   var viewButtons=["inbox","quotes","routing","metrics"];
   if(user.role==="admin")viewButtons.push("users");
 
-  // Filter quotes by search
   var filteredQuotes=quotes.filter(function(q){
     if(qFilterMonth!=="all"&&q.created_at){var d=new Date(q.created_at.replace(" ","T")+"Z");var ym=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");if(ym!==qFilterMonth)return false}
     if(!quoteSearch)return true;var s=quoteSearch.toLowerCase();return(q.contact_name&&q.contact_name.toLowerCase().indexOf(s)!==-1)||(q.description&&q.description.toLowerCase().indexOf(s)!==-1)||(q.created_by&&q.created_by.toLowerCase().indexOf(s)!==-1)});
 
-  // Compute month-filtered stats client-side
   var monthFilteredQuotes=qFilterMonth==="all"?quotes:quotes.filter(function(q){if(!q.created_at)return false;var d=new Date(q.created_at.replace(" ","T")+"Z");var ym=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");return ym===qFilterMonth});
   var filteredStats=null;
   if(qFilterMonth!=="all"&&monthFilteredQuotes.length>=0){
@@ -224,10 +229,8 @@ function App(){
   }
   var activeStats=filteredStats||quoteStats;
 
-  // Generate available months from quotes
   var availableMonths=[];var seenMonths={};quotes.forEach(function(q){if(q.created_at){var d=new Date(q.created_at.replace(" ","T")+"Z");var ym=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");if(!seenMonths[ym]){seenMonths[ym]=true;var monthNames=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];availableMonths.push({value:ym,label:monthNames[d.getMonth()]+" "+d.getFullYear()})}}});availableMonths.sort(function(a,b){return b.value.localeCompare(a.value)});
 
-  // Get unique users who created quotes for filter
   var quoteUsers=[];var seenUsers={};quotes.forEach(function(q){if(q.created_by&&!seenUsers[q.created_by]){seenUsers[q.created_by]=true;quoteUsers.push(q.created_by)}});
 
   return React.createElement("div",{style:{width:"100%",height:"100vh",display:"flex",flexDirection:"column",overflow:"hidden"}},
@@ -266,7 +269,7 @@ function App(){
                 React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},React.createElement("span",{style:{color:"#333"}},"Derivado a"),dept&&React.createElement("span",{style:{background:dept.bg,color:dept.color,padding:"3px 10px",borderRadius:20,fontWeight:600,fontSize:11}},dept.icon+" "+dept.label),React.createElement("span",{style:{fontSize:11,color:"#999"}},"Confianza: "+(selected.ai_confidence||"pending"))),
                 user.role==="admin"&&React.createElement("div",null,React.createElement("div",{style:{display:"flex",gap:6,marginTop:8}},React.createElement("button",{onClick:function(){setShowReassign(!showReassign)},style:{padding:"5px 12px",fontSize:11,borderRadius:6,border:"1px solid #ddd",background:"#f5f5f3",color:"#666",cursor:"pointer"}},"Reasignar")),showReassign&&React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,paddingTop:8,borderTop:"1px solid #eee"}},Object.entries(DEPARTMENTS).map(function(entry){var k=entry[0];var d=entry[1];return React.createElement("button",{key:k,onClick:function(){updateContact(selected.id,{department:k,_old_department:selected.department})},style:{padding:"5px 12px",fontSize:11,borderRadius:20,border:selected.department===k?"1px solid "+d.color:"1px solid #ddd",background:selected.department===k?d.bg:"#fff",color:selected.department===k?d.color:"#888",cursor:"pointer",fontWeight:selected.department===k?600:400}},d.icon+" "+d.label)})))),
               React.createElement("div",{ref:chatRef,style:{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:10}},
-                messages.map(function(m,i){return React.createElement("div",{key:m.id||i,style:{alignSelf:m.direction==="outgoing"?"flex-end":"flex-start",maxWidth:"78%",animation:"slideIn .25s ease"}},React.createElement("div",{style:{padding:"9px 14px",borderRadius:m.direction==="outgoing"?"14px 4px 14px 14px":"4px 14px 14px 14px",background:m.direction==="outgoing"?(m.agent_name==="IA NexoCRM"?"#F0E6F6":"#E6F1FB"):"#fff",color:m.direction==="outgoing"?"#042C53":"#111",fontSize:13,lineHeight:1.55,border:m.direction==="incoming"?"1px solid #e8e8e6":m.agent_name==="IA NexoCRM"?"1px solid #d9c4e8":"none"}},renderMedia(m)),React.createElement("div",{style:{fontSize:10,color:"#bbb",padding:"2px 4px",textAlign:m.direction==="outgoing"?"right":"left"}},formatTime(m.created_at)+(m.direction==="outgoing"&&m.agent_name?" - "+m.agent_name:"")))})),
+                messages.map(function(m,i){if(m.direction==="system"){return renderSystemMessage(m,i)}return React.createElement("div",{key:m.id||i,style:{alignSelf:m.direction==="outgoing"?"flex-end":"flex-start",maxWidth:"78%",animation:"slideIn .25s ease"}},React.createElement("div",{style:{padding:"9px 14px",borderRadius:m.direction==="outgoing"?"14px 4px 14px 14px":"4px 14px 14px 14px",background:m.direction==="outgoing"?(m.agent_name==="IA NexoCRM"?"#F0E6F6":"#E6F1FB"):"#fff",color:m.direction==="outgoing"?"#042C53":"#111",fontSize:13,lineHeight:1.55,border:m.direction==="incoming"?"1px solid #e8e8e6":m.agent_name==="IA NexoCRM"?"1px solid #d9c4e8":"none"}},renderMedia(m)),React.createElement("div",{style:{fontSize:10,color:"#bbb",padding:"2px 4px",textAlign:m.direction==="outgoing"?"right":"left"}},formatTime(m.created_at)+(m.direction==="outgoing"&&m.agent_name?" - "+m.agent_name:"")))})),
               React.createElement("div",{style:{padding:"10px 16px",borderTop:"1px solid #e2e2e0",background:"#fff"}},
                 (suggestion||aiLoading)&&React.createElement("div",{style:{marginBottom:8,padding:"8px 12px",background:"#f9f9f7",border:"1px solid #e5e5e3",borderRadius:8,fontSize:12,display:"flex",gap:8,alignItems:"flex-start"}},React.createElement("div",{style:{width:6,height:6,borderRadius:"50%",background:aiLoading?"#999":"#25D366",marginTop:5,flexShrink:0,animation:aiLoading?"dotPulse 1s infinite":"none"}}),React.createElement("div",{style:{flex:1,color:aiLoading?"#999":"#444"}},aiLoading?"Generando sugerencia...":suggestion),!aiLoading&&suggestion&&React.createElement("button",{onClick:function(){setMsgText(suggestion)},style:{fontSize:10,padding:"3px 8px",borderRadius:6,border:"1px solid #B5D4F4",background:"#E6F1FB",color:"#185FA5",cursor:"pointer",flexShrink:0,fontWeight:500}},"Usar"),!aiLoading&&React.createElement("button",{onClick:function(){loadSuggestion(selected.id)},style:{fontSize:10,padding:"3px 8px",borderRadius:6,border:"1px solid #ddd",background:"#f5f5f3",color:"#888",cursor:"pointer",flexShrink:0}},"Refrescar")),
                 React.createElement("input",{ref:fileInputRef,type:"file",accept:".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleFileUpload(e.target.files[0]);e.target.value=""}}),
@@ -332,25 +335,13 @@ function App(){
             React.createElement("p",{style:{fontSize:13,color:"#888"}},"Control de cotizaciones por cliente y vendedor")),
           React.createElement("button",{onClick:function(){if(showQuoteForm){setShowQuoteForm(false);resetQuoteForm()}else{openNewQuote()}},style:{padding:"8px 18px",fontSize:13,borderRadius:8,border:"none",background:showQuoteForm?"#EB3B5A":"#185FA5",color:"#fff",cursor:"pointer",fontWeight:600}},showQuoteForm?"Cancelar":"+ Nuevo presupuesto")),
 
-        // Stats cards
         activeStats&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:12,marginBottom:20}},
-          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#111"}},activeStats.total),
-            React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Presupuestos")),
-          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#8854D0"}},activeStats.totalAlternatives||activeStats.total),
-            React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Alternativas")),
-          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#27AE60"}},formatMoney(activeStats.totalAmount)),
-            React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Monto total")),
-          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#2E86DE"}},activeStats.approvedRate+"%"),
-            React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Tasa aprobacion")),
-          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
-            React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#FF9500"}},(activeStats.upcomingFollowups||[]).length),
-            React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Seguim. proximos"))),
+          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#111"}},activeStats.total),React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Presupuestos")),
+          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#8854D0"}},activeStats.totalAlternatives||activeStats.total),React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Alternativas")),
+          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#27AE60"}},formatMoney(activeStats.totalAmount)),React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Monto total")),
+          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#2E86DE"}},activeStats.approvedRate+"%"),React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Tasa aprobacion")),
+          React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},React.createElement("div",{style:{fontSize:28,fontWeight:600,color:"#FF9500"}},(activeStats.upcomingFollowups||[]).length),React.createElement("div",{style:{fontSize:12,color:"#888",marginTop:2}},"Seguim. proximos"))),
 
-        // Stats by user and status
         activeStats&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}},
           React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
             React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#111",marginBottom:12}},"Por vendedor"),
@@ -368,7 +359,6 @@ function App(){
                 React.createElement("span",{style:{color:"#888"}},s.count),
                 React.createElement("span",{style:{fontWeight:600,color:sc.color}},formatMoney(s.total_amount))))}))),
 
-        // Upcoming followups
         activeStats&&(activeStats.upcomingFollowups||[]).length>0&&React.createElement("div",{style:{background:"#FFF4E5",borderRadius:12,border:"1px solid #FAC775",padding:16,marginBottom:20}},
           React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#854F0B",marginBottom:10}},"\u{1F514} Seguimientos proximos (3 dias)"),
           (activeStats.upcomingFollowups||[]).map(function(q){var days=daysUntil(q.followup_date);return React.createElement("div",{key:q.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #FAEEDA",fontSize:12}},
@@ -379,62 +369,27 @@ function App(){
               React.createElement("span",{style:{color:days!==null&&days<=0?"#EB3B5A":"#854F0B",fontWeight:600,fontSize:11}},days!==null&&days<=0?"VENCIDO":"en "+days+" dias"),
               React.createElement(QuoteStatusBadge,{status:q.status})))})),
 
-        // New/Edit quote form
         showQuoteForm&&React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:20,marginBottom:20,animation:"slideIn .3s ease"}},
           React.createElement("div",{style:{fontSize:14,fontWeight:600,color:"#111",marginBottom:16}},editingQuote?"Editar presupuesto #"+editingQuote.id:"Nuevo presupuesto"),
           React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
-            React.createElement("div",null,
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"CLIENTE"),
-              React.createElement("select",{value:qfContactId,onChange:function(e){setQfContactId(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}},
-                React.createElement("option",{value:""},"Seleccionar cliente..."),
-                contacts.map(function(c){return React.createElement("option",{key:c.id,value:c.id},c.name+" ("+(CHANNELS[c.channel]?CHANNELS[c.channel].label:c.channel)+")")}))),
-            React.createElement("div",null,
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"MONTO ($)"),
-              React.createElement("input",{type:"number",value:qfAmount,onChange:function(e){setQfAmount(e.target.value)},placeholder:"0",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
-            React.createElement("div",null,
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"ALTERNATIVAS"),
-              React.createElement("input",{type:"number",min:"1",value:qfAlternatives,onChange:function(e){setQfAlternatives(e.target.value)},placeholder:"1",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
-            React.createElement("div",{style:{gridColumn:"1 / -1"}},
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"DESCRIPCION"),
-              React.createElement("input",{value:qfDesc,onChange:function(e){setQfDesc(e.target.value)},placeholder:"Ej: 4 ventanas corredizas 1.50x1.20, 2 puertas...",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
-            React.createElement("div",null,
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"ESTADO"),
-              React.createElement("select",{value:qfStatus,onChange:function(e){setQfStatus(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}},
-                Object.entries(QUOTE_STATUS).map(function(entry){return React.createElement("option",{key:entry[0],value:entry[0]},entry[1].label)}))),
-            React.createElement("div",null,
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"COTIZADO POR"),
-              React.createElement("select",{value:qfCreatedBy,onChange:function(e){setQfCreatedBy(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}},
-                React.createElement("option",{value:user.name},user.name),
-                usersList.filter(function(u){return u.name!==user.name&&u.is_active}).map(function(u){return React.createElement("option",{key:u.id,value:u.name},u.name)}),
-                React.createElement("option",{value:"IA NexoCRM"},"IA NexoCRM"))),
-            React.createElement("div",null,
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"FECHA RECEPCION PEDIDO"),
-              React.createElement("input",{type:"date",value:qfReceivedAt,onChange:function(e){setQfReceivedAt(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
-            React.createElement("div",null,
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"FECHA ENTREGA ESTIMADA"),
-              React.createElement("input",{type:"date",value:qfDeliveryDate,onChange:function(e){setQfDeliveryDate(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
-            React.createElement("div",null,
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"FECHA SEGUIMIENTO"),
-              React.createElement("input",{type:"date",value:qfFollowupDate,onChange:function(e){setQfFollowupDate(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
-            React.createElement("div",{style:{gridColumn:"1 / -1"}},
-              React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"NOTAS"),
-              React.createElement("textarea",{value:qfNotes,onChange:function(e){setQfNotes(e.target.value)},placeholder:"Observaciones adicionales...",rows:2,style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",resize:"none"}}))),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"CLIENTE"),React.createElement("select",{value:qfContactId,onChange:function(e){setQfContactId(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}},React.createElement("option",{value:""},"Seleccionar cliente..."),contacts.map(function(c){return React.createElement("option",{key:c.id,value:c.id},c.name+" ("+(CHANNELS[c.channel]?CHANNELS[c.channel].label:c.channel)+")")}))),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"MONTO ($)"),React.createElement("input",{type:"number",value:qfAmount,onChange:function(e){setQfAmount(e.target.value)},placeholder:"0",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"ALTERNATIVAS"),React.createElement("input",{type:"number",min:"1",value:qfAlternatives,onChange:function(e){setQfAlternatives(e.target.value)},placeholder:"1",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+            React.createElement("div",{style:{gridColumn:"1 / -1"}},React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"DESCRIPCION"),React.createElement("input",{value:qfDesc,onChange:function(e){setQfDesc(e.target.value)},placeholder:"Ej: 4 ventanas corredizas 1.50x1.20, 2 puertas...",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"ESTADO"),React.createElement("select",{value:qfStatus,onChange:function(e){setQfStatus(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}},Object.entries(QUOTE_STATUS).map(function(entry){return React.createElement("option",{key:entry[0],value:entry[0]},entry[1].label)}))),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"COTIZADO POR"),React.createElement("select",{value:qfCreatedBy,onChange:function(e){setQfCreatedBy(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}},React.createElement("option",{value:user.name},user.name),usersList.filter(function(u){return u.name!==user.name&&u.is_active}).map(function(u){return React.createElement("option",{key:u.id,value:u.name},u.name)}),React.createElement("option",{value:"IA NexoCRM"},"IA NexoCRM"))),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"FECHA RECEPCION PEDIDO"),React.createElement("input",{type:"date",value:qfReceivedAt,onChange:function(e){setQfReceivedAt(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"FECHA ENTREGA ESTIMADA"),React.createElement("input",{type:"date",value:qfDeliveryDate,onChange:function(e){setQfDeliveryDate(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+            React.createElement("div",null,React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"FECHA SEGUIMIENTO"),React.createElement("input",{type:"date",value:qfFollowupDate,onChange:function(e){setQfFollowupDate(e.target.value)},style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+            React.createElement("div",{style:{gridColumn:"1 / -1"}},React.createElement("label",{style:{fontSize:11,fontWeight:600,color:"#888",display:"block",marginBottom:4}},"NOTAS"),React.createElement("textarea",{value:qfNotes,onChange:function(e){setQfNotes(e.target.value)},placeholder:"Observaciones adicionales...",rows:2,style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",resize:"none"}}))),
           React.createElement("button",{onClick:saveQuote,style:{marginTop:16,padding:"10px 24px",fontSize:13,borderRadius:8,border:"none",background:"#185FA5",color:"#fff",cursor:"pointer",fontWeight:600}},editingQuote?"Guardar cambios":"Crear presupuesto")),
 
-        // Filters and search
         React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",marginBottom:16,flexWrap:"wrap"}},
           React.createElement("input",{value:quoteSearch,onChange:function(e){setQuoteSearch(e.target.value)},placeholder:"Buscar por cliente, descripcion o vendedor...",style:{flex:1,minWidth:200,padding:"8px 14px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}}),
-          React.createElement("select",{value:qFilterMonth,onChange:function(e){setQFilterMonth(e.target.value)},style:{padding:"8px 12px",borderRadius:8,border:qFilterMonth!=="all"?"1px solid #185FA5":"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",background:qFilterMonth!=="all"?"#E6F1FB":"#fff",color:qFilterMonth!=="all"?"#185FA5":"#333",fontWeight:qFilterMonth!=="all"?600:400}},
-            React.createElement("option",{value:"all"},"Todos los meses"),
-            availableMonths.map(function(m){return React.createElement("option",{key:m.value,value:m.value},m.label)})),
-          React.createElement("select",{value:qFilterStatus,onChange:function(e){setQFilterStatus(e.target.value)},style:{padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",background:"#fff"}},
-            React.createElement("option",{value:"all"},"Todos los estados"),
-            Object.entries(QUOTE_STATUS).map(function(entry){return React.createElement("option",{key:entry[0],value:entry[0]},entry[1].label)})),
-          React.createElement("select",{value:qFilterUser,onChange:function(e){setQFilterUser(e.target.value)},style:{padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",background:"#fff"}},
-            React.createElement("option",{value:"all"},"Todos los vendedores"),
-            quoteUsers.map(function(u){return React.createElement("option",{key:u,value:u},u)}))),
+          React.createElement("select",{value:qFilterMonth,onChange:function(e){setQFilterMonth(e.target.value)},style:{padding:"8px 12px",borderRadius:8,border:qFilterMonth!=="all"?"1px solid #185FA5":"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",background:qFilterMonth!=="all"?"#E6F1FB":"#fff",color:qFilterMonth!=="all"?"#185FA5":"#333",fontWeight:qFilterMonth!=="all"?600:400}},React.createElement("option",{value:"all"},"Todos los meses"),availableMonths.map(function(m){return React.createElement("option",{key:m.value,value:m.value},m.label)})),
+          React.createElement("select",{value:qFilterStatus,onChange:function(e){setQFilterStatus(e.target.value)},style:{padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",background:"#fff"}},React.createElement("option",{value:"all"},"Todos los estados"),Object.entries(QUOTE_STATUS).map(function(entry){return React.createElement("option",{key:entry[0],value:entry[0]},entry[1].label)})),
+          React.createElement("select",{value:qFilterUser,onChange:function(e){setQFilterUser(e.target.value)},style:{padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",background:"#fff"}},React.createElement("option",{value:"all"},"Todos los vendedores"),quoteUsers.map(function(u){return React.createElement("option",{key:u,value:u},u)}))),
 
-        // Quotes table
         React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",overflow:"hidden"}},
           React.createElement("div",{style:{overflowX:"auto"}},
             React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:12}},
@@ -458,25 +413,17 @@ function App(){
                   var isUrgent=followDays!==null&&followDays<=1&&(q.status==="pendiente"||q.status==="enviado");
                   return React.createElement("tr",{key:q.id,style:{borderBottom:"1px solid #f0f0ee",background:isUrgent?"#FFF4E5":"#fff",animation:"slideIn .3s ease"}},
                     React.createElement("td",{style:{padding:"10px 14px",color:"#888"}},q.id),
-                    React.createElement("td",{style:{padding:"10px 14px"}},
-                      React.createElement("div",{style:{fontWeight:500,color:"#111"}},q.contact_name),
-                      q.contact_phone&&React.createElement("div",{style:{fontSize:10,color:"#888"}},q.contact_phone)),
+                    React.createElement("td",{style:{padding:"10px 14px"}},React.createElement("div",{style:{fontWeight:500,color:"#111"}},q.contact_name),q.contact_phone&&React.createElement("div",{style:{fontSize:10,color:"#888"}},q.contact_phone)),
                     React.createElement("td",{style:{padding:"10px 14px",color:"#333",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},q.description||"-"),
                     React.createElement("td",{style:{padding:"10px 14px",textAlign:"right",fontWeight:600,color:"#111"}},formatMoney(q.amount)),
                     React.createElement("td",{style:{padding:"10px 14px",textAlign:"center",color:"#555",fontWeight:500}},q.alternatives||1),
-                    React.createElement("td",{style:{padding:"10px 14px",textAlign:"center"}},
-                      React.createElement("select",{value:q.status,onChange:function(e){updateQuoteStatus(q.id,e.target.value)},style:{padding:"4px 8px",borderRadius:6,border:"1px solid "+(QUOTE_STATUS[q.status]?QUOTE_STATUS[q.status].color:"#ddd"),background:QUOTE_STATUS[q.status]?QUOTE_STATUS[q.status].bg:"#fff",color:QUOTE_STATUS[q.status]?QUOTE_STATUS[q.status].color:"#888",fontSize:11,fontWeight:600,cursor:"pointer",outline:"none"}},
-                        Object.entries(QUOTE_STATUS).map(function(entry){return React.createElement("option",{key:entry[0],value:entry[0]},entry[1].label)}))),
+                    React.createElement("td",{style:{padding:"10px 14px",textAlign:"center"}},React.createElement("select",{value:q.status,onChange:function(e){updateQuoteStatus(q.id,e.target.value)},style:{padding:"4px 8px",borderRadius:6,border:"1px solid "+(QUOTE_STATUS[q.status]?QUOTE_STATUS[q.status].color:"#ddd"),background:QUOTE_STATUS[q.status]?QUOTE_STATUS[q.status].bg:"#fff",color:QUOTE_STATUS[q.status]?QUOTE_STATUS[q.status].color:"#888",fontSize:11,fontWeight:600,cursor:"pointer",outline:"none"}},Object.entries(QUOTE_STATUS).map(function(entry){return React.createElement("option",{key:entry[0],value:entry[0]},entry[1].label)}))),
                     React.createElement("td",{style:{padding:"10px 14px",color:"#555"}},q.created_by),
                     React.createElement("td",{style:{padding:"10px 14px",textAlign:"center"}},q.contact_channel?React.createElement(Badge,{type:"ch",data:q.contact_channel}):"-"),
                     React.createElement("td",{style:{padding:"10px 14px",textAlign:"center",color:"#555"}},formatDate(q.received_at)),
                     React.createElement("td",{style:{padding:"10px 14px",textAlign:"center",color:"#555"}},formatDate(q.delivery_date)),
-                    React.createElement("td",{style:{padding:"10px 14px",textAlign:"center"}},
-                      q.followup_date?React.createElement("span",{style:{color:isUrgent?"#EB3B5A":"#555",fontWeight:isUrgent?600:400}},formatDate(q.followup_date),followDays!==null&&React.createElement("span",{style:{fontSize:10,display:"block",color:followDays<=0?"#EB3B5A":"#888"}},followDays<=0?"Vencido":"en "+followDays+"d")):"-"),
-                    React.createElement("td",{style:{padding:"10px 14px",textAlign:"center"}},
-                      React.createElement("div",{style:{display:"flex",gap:4,justifyContent:"center"}},
-                        React.createElement("button",{onClick:function(){openEditQuote(q)},style:{padding:"4px 8px",fontSize:10,borderRadius:6,border:"1px solid #ddd",background:"#f5f5f3",color:"#666",cursor:"pointer"}},"\u270F\uFE0F"),
-                        React.createElement("button",{onClick:function(){deleteQuote(q.id)},style:{padding:"4px 8px",fontSize:10,borderRadius:6,border:"1px solid #FDEBEF",background:"#FDEBEF",color:"#EB3B5A",cursor:"pointer"}},"\u{1F5D1}"))))}),
+                    React.createElement("td",{style:{padding:"10px 14px",textAlign:"center"}},q.followup_date?React.createElement("span",{style:{color:isUrgent?"#EB3B5A":"#555",fontWeight:isUrgent?600:400}},formatDate(q.followup_date),followDays!==null&&React.createElement("span",{style:{fontSize:10,display:"block",color:followDays<=0?"#EB3B5A":"#888"}},followDays<=0?"Vencido":"en "+followDays+"d")):"-"),
+                    React.createElement("td",{style:{padding:"10px 14px",textAlign:"center"}},React.createElement("div",{style:{display:"flex",gap:4,justifyContent:"center"}},React.createElement("button",{onClick:function(){openEditQuote(q)},style:{padding:"4px 8px",fontSize:10,borderRadius:6,border:"1px solid #ddd",background:"#f5f5f3",color:"#666",cursor:"pointer"}},"\u270F\uFE0F"),React.createElement("button",{onClick:function(){deleteQuote(q.id)},style:{padding:"4px 8px",fontSize:10,borderRadius:6,border:"1px solid #FDEBEF",background:"#FDEBEF",color:"#EB3B5A",cursor:"pointer"}},"\u{1F5D1}"))))}),
                 filteredQuotes.length===0&&React.createElement("tr",null,
                   React.createElement("td",{colSpan:12,style:{padding:30,textAlign:"center",color:"#bbb"}},"No hay presupuestos"+(qFilterStatus!=="all"||qFilterUser!=="all"?" con estos filtros":"")))))))))
 
