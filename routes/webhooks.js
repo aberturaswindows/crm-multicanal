@@ -147,6 +147,24 @@ async function handleAutoReply(contact, channel) {
 
       if (result.stageChange === "datos_completos") {
         console.log("[AUTO-REPLY] *** ATENCION: " + contact.name + " tiene todos los datos para cotizar. Armar presupuesto. ***");
+
+        // Guardar ficha resumen para cotizar
+        if (result.resumen) {
+          var fichaTexto = "📋 FICHA PARA COTIZAR\n";
+          fichaTexto += "━━━━━━━━━━━━━━━━━━━━━\n";
+          fichaTexto += "👤 Nombre: " + (result.resumen.nombre || "No indicado") + "\n";
+          fichaTexto += "📞 Teléfono: " + (result.resumen.telefono || "No indicado") + "\n";
+          fichaTexto += "📍 Dirección: " + (result.resumen.direccion || "No indicada") + "\n";
+          fichaTexto += "🪟 Producto: " + (result.resumen.producto || "No indicado") + "\n";
+          fichaTexto += "📐 Plano: " + (result.resumen.plano || "No indicado") + "\n";
+          fichaTexto += "🎨 Color: " + (result.resumen.color || "No indicado") + "\n";
+          fichaTexto += "🔲 Vidrio: " + (result.resumen.vidrio || "No indicado") + "\n";
+          fichaTexto += "📏 Medidas: " + (result.resumen.medidas || "No indicadas") + "\n";
+          fichaTexto += "🔧 Instalación: " + (result.resumen.instalacion || "No indicado") + "\n";
+          fichaTexto += "━━━━━━━━━━━━━━━━━━━━━";
+          db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, fichaTexto, channel);
+          console.log("[FICHA] Resumen guardado para " + contact.name);
+        }
       }
     }
 
