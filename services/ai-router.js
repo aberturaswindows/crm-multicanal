@@ -297,7 +297,10 @@ async function generateAutoReply(contact, messages) {
 
   var stage = contact.conversation_stage || "consulta";
 
-  if (stage === "datos_completos" || stage === "cerrado_ganado" || stage === "cerrado_perdido" || stage === "sin_respuesta") {
+  // Si la conversacion ya fue cerrada (ganada/perdida/sin_respuesta), no responder.
+  // Pero SI sigue respondiendo en "datos_completos" porque el cliente puede tener mas consultas
+  // despues de haber pasado todos los datos (plazos, colores, aclaraciones, etc.)
+  if (stage === "cerrado_ganado" || stage === "cerrado_perdido" || stage === "sin_respuesta") {
     return { reply: null, stageChange: null, resumen: null };
   }
 
@@ -345,6 +348,17 @@ async function generateAutoReply(contact, messages) {
     stageInstructions += '  5) "Otro motivo"\n';
     stageInstructions += "- Si el cliente confirma que SI va a hacer el trabajo, felicitalo y decile que un asesor se va a comunicar para coordinar los proximos pasos.\n";
     stageInstructions += "- Respuesta breve: 2-3 oraciones.\n";
+  } else if (stage === "datos_completos") {
+    stageInstructions = "ETAPA ACTUAL: Datos completos - Esperando armado de presupuesto.\n";
+    stageInstructions += "INSTRUCCIONES DE ETAPA:\n";
+    stageInstructions += "- El cliente YA dio todos los datos necesarios para cotizar. NO vuelvas a pedirle datos.\n";
+    stageInstructions += "- Un asesor humano esta armando el presupuesto (hasta 72 hs habiles).\n";
+    stageInstructions += "- Si el cliente pregunta por el estado, confirmale que se esta preparando.\n";
+    stageInstructions += "- Si hace consultas adicionales (plazos, colores, terminaciones, productos, proceso), respondele normalmente con la informacion de la empresa.\n";
+    stageInstructions += "- Si el cliente AGREGA O MODIFICA datos (cambia medidas, color, producto, etc.), confirma el cambio y avisale que el asesor lo tendra en cuenta en el presupuesto.\n";
+    stageInstructions += "- Si el cliente dice que ya no quiere continuar, marcalo como cliente_rechaza.\n";
+    stageInstructions += "- Si el cliente confirma que quiere contratar, marcalo como cliente_acepta.\n";
+    stageInstructions += "- Respuestas breves: 2-3 oraciones maximo.\n";
   }
 
   var prompt = "Sos Claudia, la asistente virtual de atencion al cliente de Aberturas Windows.\n\n";
@@ -476,6 +490,59 @@ async function generateFollowup(contact, messages) {
   }
 }
 
+async function generateFicha(contact, messages) {
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  var history = messages.map(function(m) {
+    return formatMessageForHistory(m);
+  }).join("\n");
+
+  var prompt = "Sos un asistente que extrae datos de cotizacion de conversaciones de Aberturas Windows.\n\n";
+  prompt += "A continuacion tenes el historial completo de una conversacion con un cliente.\n";
+  prompt += "Tu tarea es extraer los datos del cliente para armar una ficha de cotizacion.\n\n";
+  prompt += "Historial de la conversacion:\n" + history + "\n\n";
+  prompt += "DATOS A EXTRAER:\n";
+  prompt += "- nombre: nombre y apellido del cliente\n";
+  prompt += "- telefono: numero de telefono (si no aparece, poner 'No indicado')\n";
+  prompt += "- direccion: direccion de la obra (si no requiere instalacion, poner 'No requiere instalacion')\n";
+  prompt += "- producto: que producto quiere cotizar (tipo de abertura, cantidades, etc.)\n";
+  prompt += "- plano: Si / No / No indicado\n";
+  prompt += "- color: color de la perfileria elegido (si no lo dijo, 'No indicado')\n";
+  prompt += "- vidrio: DVH / Simple / No indicado\n";
+  prompt += "- medidas: medidas indicadas por el cliente\n";
+  prompt += "- instalacion: Si / No / No indicado\n\n";
+  prompt += "Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato EXACTO:\n";
+  prompt += '{"nombre":"...","telefono":"...","direccion":"...","producto":"...","plano":"...","color":"...","vidrio":"...","medidas":"...","instalacion":"..."}\n';
+  prompt += "Si algun dato no fue mencionado en la conversacion, usa 'No indicado' (o 'No indicada' para direccion/medidas).";
+
+  try {
+    var res = await axios.post("https://api.anthropic.com/v1/messages", {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 500,
+      messages: [{ role: "user", content: prompt }]
+    }, {
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01"
+      }
+    });
+
+    var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
+    try {
+      var parsed = JSON.parse(text);
+      return parsed;
+    } catch (parseErr) {
+      console.error("Error parseando ficha:", parseErr.message);
+      return null;
+    }
+  } catch (err) {
+    console.error("Error generando ficha:", err.message);
+    return null;
+  }
+}
+
 async function detectLostReason(messageText) {
   var lower = messageText.toLowerCase();
   if (lower.indexOf("precio") !== -1 || lower.indexOf("caro") !== -1 || lower.indexOf("presupuesto") !== -1 || lower.indexOf("costoso") !== -1 || lower.indexOf("plata") !== -1) return "precio";
@@ -518,6 +585,7 @@ module.exports = {
   generateSuggestion: generateSuggestion,
   generateAutoReply: generateAutoReply,
   generateFollowup: generateFollowup,
+  generateFicha: generateFicha,
   detectLostReason: detectLostReason,
   DEPARTMENTS: DEPARTMENTS,
   STAGE_LABELS: STAGE_LABELS
