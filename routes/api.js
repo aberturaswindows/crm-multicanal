@@ -3,6 +3,7 @@ var router = express.Router();
 var getDb = require("../db/setup").getDb;
 var generateSuggestion = require("../services/ai-router").generateSuggestion;
 var classifyMessage = require("../services/ai-router").classifyMessage;
+var generateFicha = require("../services/ai-router").generateFicha;
 var STAGE_LABELS = require("../services/ai-router").STAGE_LABELS;
 var whatsapp = require("../services/channels/whatsapp");
 var instagram = require("../services/channels/instagram");
@@ -391,6 +392,46 @@ router.post("/contacts/:id/pause-ai", function(req, res) {
   var updated = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
   console.log("[CLAUDIA] Pausada manualmente para " + updated.name);
   res.json(updated);
+});
+
+// Regenerar ficha de cotizacion (extrae datos del cliente del historial completo)
+router.post("/contacts/:id/regenerate-ficha", async function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+
+  try {
+    var messages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? AND direction != 'system' ORDER BY created_at ASC").all(contact.id);
+    if (messages.length === 0) {
+      return res.status(400).json({ error: "No hay mensajes en esta conversacion" });
+    }
+
+    var resumen = await generateFicha(contact, messages);
+    if (!resumen) {
+      return res.status(500).json({ error: "No se pudo generar la ficha" });
+    }
+
+    var fichaTexto = "📋 FICHA PARA COTIZAR\n";
+    fichaTexto += "━━━━━━━━━━━━━━━━━━━━━\n";
+    fichaTexto += "👤 Nombre: " + (resumen.nombre || "No indicado") + "\n";
+    fichaTexto += "📞 Teléfono: " + (resumen.telefono || "No indicado") + "\n";
+    fichaTexto += "📍 Dirección: " + (resumen.direccion || "No indicada") + "\n";
+    fichaTexto += "🪟 Producto: " + (resumen.producto || "No indicado") + "\n";
+    fichaTexto += "📐 Plano: " + (resumen.plano || "No indicado") + "\n";
+    fichaTexto += "🎨 Color: " + (resumen.color || "No indicado") + "\n";
+    fichaTexto += "🔲 Vidrio: " + (resumen.vidrio || "No indicado") + "\n";
+    fichaTexto += "📏 Medidas: " + (resumen.medidas || "No indicadas") + "\n";
+    fichaTexto += "🔧 Instalación: " + (resumen.instalacion || "No indicado") + "\n";
+    fichaTexto += "━━━━━━━━━━━━━━━━━━━━━";
+
+    var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, fichaTexto, contact.channel);
+    var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
+    console.log("[FICHA] Regenerada para " + contact.name);
+    res.json({ success: true, message: message, resumen: resumen });
+  } catch (err) {
+    console.error("[FICHA] Error regenerando:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ============================================
