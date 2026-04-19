@@ -115,6 +115,15 @@ var COMPANY_KNOWLEDGE = [
   "- Los descuentos, promociones bancarias y condiciones de pago van especificados en cada presupuesto."
 ].join("\n");
 
+var CLAUDIA_PERSONA = [
+  "IDENTIDAD:",
+  "- Te llamas Claudia. Sos la asistente virtual de atencion al cliente de Aberturas Windows.",
+  "- Si en el historial de la conversacion NO hay mensajes previos del 'Agente' (o sea, es tu primer mensaje), presentate al inicio diciendo: 'Hola, soy Claudia de Aberturas Windows.'",
+  "- Si YA hay mensajes previos del 'Agente' en el historial, NO te vuelvas a presentar, seguis la conversacion normalmente.",
+  "- Si el cliente te pregunta quien sos, como te llamas, o si sos un bot/persona real, respondele con honestidad: que sos Claudia, la asistente virtual de Aberturas Windows, y que podes ayudarlo con consultas, cotizaciones e informacion general.",
+  "- Nunca afirmes ser una persona humana. Si te preguntan directamente, aclara que sos una asistente virtual."
+].join("\n");
+
 var QUOTE_DATA_FIELDS = [
   "nombre y apellido para el presupuesto",
   "numero de telefono (si no lo tenemos)",
@@ -234,7 +243,8 @@ async function generateSuggestion(contact, messages) {
   var now = new Date();
   var argHour = now.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" });
 
-  var prompt = "Sos un agente de atencion al cliente de Aberturas Windows, empresa especializada en aberturas a medida de aluminio y PVC en Mendoza, Argentina.\n\n";
+  var prompt = "Sos Claudia, la asistente virtual de atencion al cliente de Aberturas Windows, empresa especializada en aberturas a medida de aluminio y PVC en Mendoza, Argentina.\n\n";
+  prompt += CLAUDIA_PERSONA + "\n\n";
   prompt += "CONOCIMIENTO DE LA EMPRESA:\n" + COMPANY_KNOWLEDGE + "\n\n";
   prompt += "REGLAS DE RESPUESTA:\n";
   prompt += "- Tono: formal pero relajado, profesional y amable. Tutear al cliente.\n";
@@ -278,6 +288,12 @@ async function generateSuggestion(contact, messages) {
 async function generateAutoReply(contact, messages) {
   var apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { reply: null, stageChange: null, resumen: null };
+
+  // NUEVO: Si Claudia esta pausada para este contacto (un agente tomo el control), no responder
+  if (contact.ai_paused) {
+    console.log("[CLAUDIA] Pausada para " + contact.name + " (un agente tomo el control). No se genera respuesta automatica.");
+    return { reply: null, stageChange: null, resumen: null };
+  }
 
   var stage = contact.conversation_stage || "consulta";
 
@@ -331,7 +347,8 @@ async function generateAutoReply(contact, messages) {
     stageInstructions += "- Respuesta breve: 2-3 oraciones.\n";
   }
 
-  var prompt = "Sos un agente de atencion al cliente de Aberturas Windows.\n\n";
+  var prompt = "Sos Claudia, la asistente virtual de atencion al cliente de Aberturas Windows.\n\n";
+  prompt += CLAUDIA_PERSONA + "\n\n";
   prompt += "CONOCIMIENTO DE LA EMPRESA:\n" + COMPANY_KNOWLEDGE + "\n\n";
   prompt += stageInstructions + "\n";
   prompt += "REGLAS GENERALES:\n";
@@ -413,7 +430,8 @@ async function generateFollowup(contact, messages) {
 
   var timeInfo = getArgentinaTime();
 
-  var prompt = "Sos un agente de atencion al cliente de Aberturas Windows.\n\n";
+  var prompt = "Sos Claudia, la asistente virtual de atencion al cliente de Aberturas Windows.\n\n";
+  prompt += CLAUDIA_PERSONA + "\n\n";
   prompt += "El cliente " + contact.name + " recibio un presupuesto pero no respondio.\n";
   prompt += "Este es el seguimiento numero " + followupNum + " de 5.\n\n";
   prompt += "Historial reciente:\n" + history + "\n\n";
