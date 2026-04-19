@@ -36,6 +36,16 @@ var upload = multer({
   }
 });
 
+// Helper: pausar la IA para un contacto cuando un agente humano intervene
+function pauseAiForContact(db, contactId, agentName) {
+  try {
+    db.prepare("UPDATE contacts SET ai_paused = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(contactId);
+    console.log("[CLAUDIA] Pausada para contacto " + contactId + " (agente: " + (agentName || "desconocido") + ")");
+  } catch (e) {
+    console.error("[CLAUDIA] Error pausando:", e.message);
+  }
+}
+
 router.get("/media/:filename", function(req, res) {
   var filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
   var filepath = path.join(MEDIA_DIR, filename);
@@ -76,6 +86,9 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
   var msgContent = caption ? caption : contentLabel;
 
   var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, ?, ?, ?, ?)").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl);
+
+  // Pausar Claudia porque un humano esta interviniendo
+  pauseAiForContact(db, contact.id, agentName);
 
   // Send via channel
   var sendResult = { success: true, simulated: true };
@@ -138,6 +151,9 @@ router.post("/contacts/:id/share-contact", async function(req, res) {
   var content = parts.join("\n");
 
   var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, ?)").run(contact.id, content, contact.channel, agentName);
+
+  // Pausar Claudia porque un humano esta interviniendo
+  pauseAiForContact(db, contact.id, agentName);
 
   var sendResult = { success: true, simulated: true };
   try {
@@ -352,6 +368,32 @@ router.get("/lost-stats", function(req, res) {
 });
 
 // ============================================
+// CLAUDIA - Control manual de pausa/resume
+// ============================================
+
+// Despausar a Claudia: el agente decide devolverle el control de la conversacion a la IA
+router.post("/contacts/:id/resume-ai", function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  db.prepare("UPDATE contacts SET ai_paused = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(contact.id);
+  var updated = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
+  console.log("[CLAUDIA] Reactivada para " + updated.name + " (control devuelto a la IA)");
+  res.json(updated);
+});
+
+// Pausar manualmente a Claudia (por si un agente quiere pausarla sin escribir aun)
+router.post("/contacts/:id/pause-ai", function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  db.prepare("UPDATE contacts SET ai_paused = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(contact.id);
+  var updated = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
+  console.log("[CLAUDIA] Pausada manualmente para " + updated.name);
+  res.json(updated);
+});
+
+// ============================================
 // CONTACTS
 // ============================================
 
@@ -414,6 +456,10 @@ router.post("/contacts/:id/messages", async function(req, res) {
   if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
   if (!content || !content.trim()) return res.status(400).json({ error: "Mensaje vacio" });
   var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, ?)").run(contact.id, content.trim(), contact.channel, agent_name || "Agente");
+
+  // Pausar Claudia: un agente humano tomo el control de la conversacion
+  pauseAiForContact(db, contact.id, agent_name);
+
   var sendResult = { success: true, simulated: true };
   if (contact.channel === "whatsapp") {
     sendResult = await whatsapp.sendMessage(contact.channel_id, content.trim(), contact.phone_line || 1);
@@ -425,7 +471,8 @@ router.post("/contacts/:id/messages", async function(req, res) {
     sendResult = await emailService.sendMessage(contact.email, "Re: Consulta", content.trim());
   }
   var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
-  res.json({ message: message, sendResult: sendResult });
+  var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
+  res.json({ message: message, sendResult: sendResult, contact: updatedContact });
 });
 
 router.get("/contacts/:id/suggestion", async function(req, res) {
