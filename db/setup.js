@@ -30,6 +30,75 @@ function setup() {
       db.exec("ALTER TABLE " + newColumns[i][0] + " ADD COLUMN " + newColumns[i][1] + " " + newColumns[i][2]);
     } catch (e) {}
   }
+
+  // Migracion: permitir direction='system' en la tabla messages
+  // SQLite no permite modificar CHECK constraints con ALTER TABLE, asi que hay que recrear la tabla.
+  // Esta migracion solo se ejecuta si la tabla vieja NO permite 'system'.
+  try {
+    var canInsertSystem = false;
+    try {
+      db.exec("BEGIN");
+      db.prepare("INSERT INTO messages (contact_id, direction, content, channel) VALUES (-999, 'system', '__test__', 'test')").run();
+      db.prepare("DELETE FROM messages WHERE contact_id = -999 AND content = '__test__'").run();
+      db.exec("COMMIT");
+      canInsertSystem = true;
+    } catch (e) {
+      try { db.exec("ROLLBACK"); } catch(e2) {}
+      canInsertSystem = false;
+    }
+
+    if (!canInsertSystem) {
+      console.log("[MIGRACION] Recreando tabla messages para permitir direction='system'...");
+      db.exec("BEGIN");
+      // 1. Obtener las columnas actuales de messages
+      var cols = db.prepare("PRAGMA table_info(messages)").all();
+      var colNames = cols.map(function(c){ return c.name; });
+      var colDefs = cols.map(function(c){
+        var def = c.name + " " + c.type;
+        if (c.notnull) def += " NOT NULL";
+        if (c.dflt_value !== null) def += " DEFAULT " + c.dflt_value;
+        if (c.pk) def += " PRIMARY KEY";
+        return def;
+      });
+
+      // 2. Construir CREATE TABLE nuevo con CHECK ampliado
+      var createNew = "CREATE TABLE messages_new (";
+      createNew += "id INTEGER PRIMARY KEY AUTOINCREMENT, ";
+      createNew += "contact_id INTEGER NOT NULL, ";
+      createNew += "direction TEXT NOT NULL CHECK(direction IN ('incoming','outgoing','system')), ";
+      createNew += "content TEXT NOT NULL, ";
+      createNew += "channel TEXT NOT NULL, ";
+      createNew += "channel_message_id TEXT, ";
+      createNew += "agent_name TEXT, ";
+      createNew += "is_ai_suggestion INTEGER DEFAULT 0, ";
+      createNew += "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, ";
+      createNew += "media_type TEXT, ";
+      createNew += "media_url TEXT, ";
+      createNew += "story_url TEXT, ";
+      createNew += "FOREIGN KEY (contact_id) REFERENCES contacts(id)";
+      createNew += ")";
+      db.exec(createNew);
+
+      // 3. Copiar datos de la tabla vieja a la nueva (solo las columnas que existen en ambas)
+      var newTableCols = ["id","contact_id","direction","content","channel","channel_message_id","agent_name","is_ai_suggestion","created_at","media_type","media_url","story_url"];
+      var copyCols = newTableCols.filter(function(c){ return colNames.indexOf(c) !== -1; });
+      db.exec("INSERT INTO messages_new (" + copyCols.join(",") + ") SELECT " + copyCols.join(",") + " FROM messages");
+
+      // 4. Borrar la vieja y renombrar la nueva
+      db.exec("DROP TABLE messages");
+      db.exec("ALTER TABLE messages_new RENAME TO messages");
+
+      // 5. Recrear indices
+      db.exec("CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id)");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at)");
+
+      db.exec("COMMIT");
+      console.log("[MIGRACION] Tabla messages recreada con soporte para direction='system'");
+    }
+  } catch (migErr) {
+    try { db.exec("ROLLBACK"); } catch(e) {}
+    console.error("[MIGRACION] Error migrando messages table:", migErr.message);
+  }
   db.exec("CREATE TABLE IF NOT EXISTS auto_reply_settings (channel TEXT PRIMARY KEY, enabled INTEGER DEFAULT 0)");
   var channels = ["whatsapp", "instagram", "facebook", "email"];
   for (var j = 0; j < channels.length; j++) {
