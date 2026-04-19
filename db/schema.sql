@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS contacts (
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   contact_id INTEGER NOT NULL,
-  direction TEXT NOT NULL CHECK(direction IN ('incoming','outgoing')),
+  direction TEXT NOT NULL CHECK(direction IN ('incoming','outgoing','system')),
   content TEXT NOT NULL,
   channel TEXT NOT NULL,
   channel_message_id TEXT,
