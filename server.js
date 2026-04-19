@@ -51,6 +51,13 @@ app.get("/health", (req, res) => {
 async function sendFollowupMessage(contact) {
   try {
     var db = getDb();
+
+    // Si Claudia esta pausada, no enviar seguimiento automatico
+    if (contact.ai_paused) {
+      console.log("[FOLLOWUP] Saltado para " + contact.name + " (Claudia pausada)");
+      return;
+    }
+
     var messages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(contact.id);
     var followupText = await generateFollowup(contact, messages);
     if (!followupText) {
@@ -58,7 +65,7 @@ async function sendFollowupMessage(contact) {
       return;
     }
 
-    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, 'IA NexoCRM')").run(contact.id, followupText, contact.channel);
+    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, 'Claudia')").run(contact.id, followupText, contact.channel);
 
     var sendResult = { success: true, simulated: true };
     var whatsapp = require("./services/channels/whatsapp");
@@ -161,7 +168,7 @@ app.listen(PORT, () => {
 ║  ${process.env.INSTAGRAM_TOKEN ? "SI" : "NO"} Instagram                          ║
 ║  ${process.env.FACEBOOK_PAGE_TOKEN ? "SI" : "NO"} Facebook                           ║
 ║  ${process.env.SENDGRID_API_KEY ? "SI" : "NO"} Email                              ║
-║  ${process.env.ANTHROPIC_API_KEY ? "SI" : "NO"} IA (Claude)                        ║
+║  ${process.env.ANTHROPIC_API_KEY ? "SI" : "NO"} IA Claudia (Claude)                ║
 ║  SI Seguimiento automatico (cada 1 hora)║
 ╚══════════════════════════════════════════╝
   `);
