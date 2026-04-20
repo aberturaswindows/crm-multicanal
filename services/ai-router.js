@@ -1,5 +1,55 @@
 var axios = require("axios");
 
+// Wrapper con retry + backoff exponencial para llamadas a Anthropic API.
+// Maneja 429 (rate limit) y errores de red temporales (5xx, timeouts).
+// Reintenta hasta 4 veces esperando 2s, 4s, 8s, 16s entre intentos.
+async function callAnthropic(payload, maxRetries) {
+  if (typeof maxRetries === "undefined") maxRetries = 4;
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurada");
+
+  var attempt = 0;
+  var lastError = null;
+  while (attempt <= maxRetries) {
+    try {
+      var res = await axios.post("https://api.anthropic.com/v1/messages", payload, {
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01"
+        },
+        timeout: 60000
+      });
+      if (attempt > 0) {
+        console.log("[IA] Llamada exitosa despues de " + attempt + " reintentos");
+      }
+      return res;
+    } catch (err) {
+      lastError = err;
+      var status = err.response ? err.response.status : null;
+      var isRetryable = status === 429 || status === 529 || (status >= 500 && status < 600) || err.code === "ETIMEDOUT" || err.code === "ECONNRESET" || err.code === "ECONNABORTED";
+
+      if (!isRetryable || attempt >= maxRetries) {
+        // No es retryable o ya agotamos reintentos
+        throw err;
+      }
+
+      var waitMs = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s, 16s
+      // Si la respuesta incluye retry-after, lo respetamos
+      if (err.response && err.response.headers && err.response.headers["retry-after"]) {
+        var retryAfter = parseInt(err.response.headers["retry-after"]);
+        if (!isNaN(retryAfter) && retryAfter > 0) {
+          waitMs = Math.min(retryAfter * 1000, 30000); // tope 30s
+        }
+      }
+      console.log("[IA] " + (status || err.code) + " recibido, reintento " + (attempt + 1) + "/" + maxRetries + " en " + (waitMs / 1000) + "s...");
+      await new Promise(function(resolve) { setTimeout(resolve, waitMs); });
+      attempt++;
+    }
+  }
+  throw lastError;
+}
+
 var DEPARTMENTS = {
   ventas: { label: "Ventas", description: "Consultas comerciales, cotizaciones, planes, productos, demos, precios" },
   soporte: { label: "Soporte Tecnico", description: "Problemas tecnicos, errores, configuracion, bugs, rendimiento" },
@@ -199,16 +249,10 @@ async function classifyMessage(messageText, conversationHistory) {
   prompt += '{"department":"ventas|soporte|admin|reclamos","confidence":"alta|media|baja","reason":"explicacion breve"}';
 
   try {
-    var res = await axios.post("https://api.anthropic.com/v1/messages", {
+    var res = await callAnthropic({
       model: "claude-sonnet-4-20250514",
       max_tokens: 150,
       messages: [{ role: "user", content: prompt }]
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      }
     });
 
     var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
@@ -266,16 +310,10 @@ async function generateSuggestion(contact, messages) {
   prompt += "Genera UNA respuesta breve para el ultimo mensaje del cliente. Solo la respuesta, sin explicaciones ni prefijos.";
 
   try {
-    var res = await axios.post("https://api.anthropic.com/v1/messages", {
+    var res = await callAnthropic({
       model: "claude-sonnet-4-20250514",
       max_tokens: 300,
       messages: [{ role: "user", content: prompt }]
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      }
     });
 
     return res.data.content && res.data.content[0] ? res.data.content[0].text : "No se pudo generar una sugerencia.";
@@ -392,16 +430,10 @@ async function generateAutoReply(contact, messages) {
   prompt += 'Si stage_assessment NO es "datos_completos", deja resumen como null.\n';
 
   try {
-    var res = await axios.post("https://api.anthropic.com/v1/messages", {
+    var res = await callAnthropic({
       model: "claude-sonnet-4-20250514",
       max_tokens: 600,
       messages: [{ role: "user", content: prompt }]
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      }
     });
 
     var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
@@ -471,16 +503,10 @@ async function generateFollowup(contact, messages) {
   prompt += "\nGenera SOLO el mensaje de seguimiento, sin explicaciones ni prefijos.";
 
   try {
-    var res = await axios.post("https://api.anthropic.com/v1/messages", {
+    var res = await callAnthropic({
       model: "claude-sonnet-4-20250514",
       max_tokens: 200,
       messages: [{ role: "user", content: prompt }]
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      }
     });
 
     return res.data.content && res.data.content[0] ? res.data.content[0].text : null;
@@ -517,16 +543,10 @@ async function generateFicha(contact, messages) {
   prompt += "Si algun dato no fue mencionado en la conversacion, usa 'No indicado' (o 'No indicada' para direccion/medidas).";
 
   try {
-    var res = await axios.post("https://api.anthropic.com/v1/messages", {
+    var res = await callAnthropic({
       model: "claude-sonnet-4-20250514",
       max_tokens: 500,
       messages: [{ role: "user", content: prompt }]
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      }
     });
 
     var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
