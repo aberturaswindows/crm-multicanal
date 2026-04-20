@@ -16,6 +16,45 @@ var FormData = require("form-data");
 var MEDIA_DIR = fs.existsSync("/data") ? "/data/media" : path.join(__dirname, "..", "data", "media");
 if (!fs.existsSync(MEDIA_DIR)) { try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch(e) {} }
 
+// Cola simple en memoria para procesar auto-replies secuencialmente.
+// Esto evita que 50 mensajes simultaneos disparen 50 llamadas a la IA a la vez
+// y provoquen rate limits (429) en la API de Anthropic.
+var autoReplyQueue = [];
+var autoReplyProcessing = false;
+var MIN_DELAY_BETWEEN_REPLIES_MS = 1500; // 1.5s entre cada respuesta
+
+async function processAutoReplyQueue() {
+  if (autoReplyProcessing) return;
+  autoReplyProcessing = true;
+  while (autoReplyQueue.length > 0) {
+    var job = autoReplyQueue.shift();
+    try {
+      // Re-leer el contacto desde DB por si su estado cambio mientras estaba en cola
+      var db = getDb();
+      var freshContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(job.contact.id);
+      if (freshContact && !freshContact.ai_paused) {
+        await handleAutoReply(freshContact, job.channel);
+      } else if (freshContact && freshContact.ai_paused) {
+        console.log("[QUEUE] Saltado auto-reply para " + freshContact.name + " (Claudia fue pausada mientras estaba en cola)");
+      }
+    } catch (err) {
+      console.error("[QUEUE] Error procesando auto-reply:", err.message);
+    }
+    // Pequena espera entre respuestas para no saturar la API
+    if (autoReplyQueue.length > 0) {
+      await new Promise(function(resolve) { setTimeout(resolve, MIN_DELAY_BETWEEN_REPLIES_MS); });
+    }
+  }
+  autoReplyProcessing = false;
+}
+
+function enqueueAutoReply(contact, channel) {
+  autoReplyQueue.push({ contact: contact, channel: channel });
+  console.log("[QUEUE] Encolado auto-reply para " + contact.name + " (posicion " + autoReplyQueue.length + " en cola)");
+  // Arrancar procesamiento con un pequeno delay inicial
+  setTimeout(function() { processAutoReplyQueue(); }, 1500);
+}
+
 function isAutoReplyEnabled(channel) {
   try {
     var db = getDb();
@@ -233,9 +272,7 @@ async function handleIncomingMessage(normalized) {
 
     if (isAutoReplyEnabled(normalized.channel)) {
       var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
-      setTimeout(function() {
-        handleAutoReply(updatedContact, normalized.channel);
-      }, 2000);
+      enqueueAutoReply(updatedContact, normalized.channel);
     }
 
     return { contact: contact, classification: classification };
