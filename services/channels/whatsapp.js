@@ -42,8 +42,25 @@ async function sendMessage(to, text, phoneLine) {
     var msgId = res.data.messages && res.data.messages[0] ? res.data.messages[0].id : null;
     return { success: true, messageId: msgId };
   } catch (err) {
-    console.error("[WHATSAPP] Error enviando texto:", err.response ? err.response.data : err.message);
-    return { success: false, error: err.message };
+    var errData = err.response ? err.response.data : null;
+    var errMsg = err.message;
+    var errorCode = null;
+    var errorSubcode = null;
+    if (errData && errData.error) {
+      errMsg = errData.error.message || errMsg;
+      errorCode = errData.error.code;
+      errorSubcode = errData.error.error_subcode;
+    }
+    console.error("[WHATSAPP] Error enviando texto:", errData || err.message);
+    return {
+      success: false,
+      error: errMsg,
+      errorCode: errorCode,
+      errorSubcode: errorSubcode,
+      // WhatsApp code 131047 = "Message failed to send because more than 24 hours have passed since the customer last replied to this number"
+      // WhatsApp code 131026 = "Message Undeliverable"
+      isOutsideWindow: errorCode === 131047 || errorCode === 131026
+    };
   }
 }
 
@@ -84,8 +101,164 @@ async function sendMedia(to, mediaType, url, caption, phoneLine) {
     console.log("[WHATSAPP] Media enviado (" + waType + ") a " + to);
     return { success: true, messageId: msgId };
   } catch (err) {
-    console.error("[WHATSAPP] Error enviando media:", err.response ? err.response.data : err.message);
-    return { success: false, error: err.message };
+    var errData = err.response ? err.response.data : null;
+    var errorCode = errData && errData.error ? errData.error.code : null;
+    console.error("[WHATSAPP] Error enviando media:", errData || err.message);
+    return {
+      success: false,
+      error: err.message,
+      errorCode: errorCode,
+      isOutsideWindow: errorCode === 131047 || errorCode === 131026
+    };
+  }
+}
+
+/**
+ * Enviar una plantilla (template) de WhatsApp. Esto permite iniciar conversacion
+ * con numeros que no te han escrito en las ultimas 24hs.
+ *
+ * @param {string} to - Numero de telefono del destinatario (formato internacional sin +, ej: "5492613539384")
+ * @param {string} templateName - Nombre de la plantilla (ej: "seguimiento_consulta")
+ * @param {string} languageCode - Codigo de idioma (ej: "es_AR")
+ * @param {Array<string>} bodyParams - Array de valores para las variables del cuerpo ({{1}}, {{2}}, etc)
+ * @param {Object} headerMedia - Opcional. Si la plantilla tiene header de tipo media: { type: "document"|"image"|"video", url: "https://...", filename: "..." }
+ * @param {number} phoneLine - Numero de linea (1, 2 o 3)
+ */
+async function sendTemplate(to, templateName, languageCode, bodyParams, headerMedia, phoneLine) {
+  var phoneId = getPhoneId(phoneLine || 1);
+  var token = process.env.WHATSAPP_TOKEN;
+
+  if (!phoneId || !token) {
+    console.warn("[WHATSAPP] No configurado. Template simulado:", to, templateName);
+    return { success: true, simulated: true };
+  }
+
+  var components = [];
+
+  // Header con media (documento, imagen o video)
+  if (headerMedia && headerMedia.url) {
+    var mediaParam = {};
+    if (headerMedia.type === "document") {
+      mediaParam = { type: "document", document: { link: headerMedia.url } };
+      if (headerMedia.filename) mediaParam.document.filename = headerMedia.filename;
+    } else if (headerMedia.type === "image") {
+      mediaParam = { type: "image", image: { link: headerMedia.url } };
+    } else if (headerMedia.type === "video") {
+      mediaParam = { type: "video", video: { link: headerMedia.url } };
+    }
+    components.push({ type: "header", parameters: [mediaParam] });
+  }
+
+  // Body params (variables {{1}}, {{2}}, etc)
+  if (bodyParams && bodyParams.length > 0) {
+    components.push({
+      type: "body",
+      parameters: bodyParams.map(function(p) { return { type: "text", text: String(p) }; })
+    });
+  }
+
+  var body = {
+    messaging_product: "whatsapp",
+    to: to,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: languageCode || "es_AR" }
+    }
+  };
+  if (components.length > 0) body.template.components = components;
+
+  try {
+    var res = await axios.post(GRAPH_API + "/" + phoneId + "/messages", body, {
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" }
+    });
+    var msgId = res.data.messages && res.data.messages[0] ? res.data.messages[0].id : null;
+    console.log("[WHATSAPP] Plantilla '" + templateName + "' enviada a " + to);
+    return { success: true, messageId: msgId };
+  } catch (err) {
+    var errData = err.response ? err.response.data : null;
+    var errMsg = err.message;
+    var errorCode = null;
+    if (errData && errData.error) {
+      errMsg = errData.error.message || errMsg;
+      errorCode = errData.error.code;
+    }
+    console.error("[WHATSAPP] Error enviando template:", errData || err.message);
+    return { success: false, error: errMsg, errorCode: errorCode };
+  }
+}
+
+/**
+ * Listar plantillas aprobadas de la cuenta de WhatsApp Business.
+ * Requiere WHATSAPP_BUSINESS_ACCOUNT_ID en variables de entorno.
+ */
+async function listTemplates() {
+  var token = process.env.WHATSAPP_TOKEN;
+  var wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || process.env.WABA_ID;
+
+  if (!token || !wabaId) {
+    console.warn("[WHATSAPP] listTemplates: falta WHATSAPP_TOKEN o WHATSAPP_BUSINESS_ACCOUNT_ID");
+    return { success: false, error: "Falta configurar WHATSAPP_BUSINESS_ACCOUNT_ID", templates: [] };
+  }
+
+  try {
+    var res = await axios.get(GRAPH_API + "/" + wabaId + "/message_templates", {
+      headers: { "Authorization": "Bearer " + token },
+      params: { limit: 100 }
+    });
+
+    var rawTemplates = (res.data && res.data.data) ? res.data.data : [];
+    // Solo devolver las aprobadas
+    var approved = rawTemplates.filter(function(t) { return t.status === "APPROVED"; });
+
+    // Procesar y simplificar para el frontend
+    var templates = approved.map(function(t) {
+      var info = {
+        name: t.name,
+        language: t.language,
+        category: t.category,
+        status: t.status
+      };
+
+      // Analizar componentes para entender que campos necesita
+      var headerComponent = null;
+      var bodyComponent = null;
+      var footerComponent = null;
+      if (t.components) {
+        for (var i = 0; i < t.components.length; i++) {
+          var c = t.components[i];
+          if (c.type === "HEADER") headerComponent = c;
+          else if (c.type === "BODY") bodyComponent = c;
+          else if (c.type === "FOOTER") footerComponent = c;
+        }
+      }
+
+      info.hasMediaHeader = false;
+      info.headerType = null;
+      if (headerComponent) {
+        info.headerType = (headerComponent.format || "").toLowerCase();
+        info.hasMediaHeader = info.headerType === "document" || info.headerType === "image" || info.headerType === "video";
+        if (headerComponent.format === "TEXT" && headerComponent.text) {
+          info.headerText = headerComponent.text;
+        }
+      }
+
+      info.bodyText = bodyComponent && bodyComponent.text ? bodyComponent.text : "";
+      info.footerText = footerComponent && footerComponent.text ? footerComponent.text : "";
+
+      // Contar variables {{1}}, {{2}}, ... en el body
+      var variableMatches = info.bodyText.match(/\{\{(\d+)\}\}/g) || [];
+      info.bodyVariablesCount = variableMatches.length > 0 ? Math.max.apply(null, variableMatches.map(function(m) {
+        return parseInt(m.replace(/[^\d]/g, ""));
+      })) : 0;
+
+      return info;
+    });
+
+    return { success: true, templates: templates };
+  } catch (err) {
+    console.error("[WHATSAPP] Error listando templates:", err.response ? err.response.data : err.message);
+    return { success: false, error: err.message, templates: [] };
   }
 }
 
@@ -255,4 +428,11 @@ function processWebhook(body) {
   }
 }
 
-module.exports = { sendMessage: sendMessage, sendMedia: sendMedia, processWebhook: processWebhook, downloadMedia: downloadMedia };
+module.exports = {
+  sendMessage: sendMessage,
+  sendMedia: sendMedia,
+  sendTemplate: sendTemplate,
+  listTemplates: listTemplates,
+  processWebhook: processWebhook,
+  downloadMedia: downloadMedia
+};
