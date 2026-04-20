@@ -197,6 +197,20 @@ function App(){
   var qsearch=useState("");var quoteSearch=qsearch[0];var setQuoteSearch=qsearch[1];
   var qfm=useState("all");var qFilterMonth=qfm[0];var setQFilterMonth=qfm[1];
 
+  // Plantillas WhatsApp
+  var tpls=useState([]);var templates=tpls[0];var setTemplates=tpls[1];
+  var tplsLoaded=useState(false);var templatesLoaded=tplsLoaded[0];var setTemplatesLoaded=tplsLoaded[1];
+  var stm=useState(false);var showTemplateModal=stm[0];var setShowTemplateModal=stm[1];
+  var tmMode=useState("new");var tmModeVal=tmMode[0];var setTmMode=tmMode[1]; // "new" = nuevo contacto, "existing" = contacto existente
+  var tmTpl=useState(null);var tmTemplate=tmTpl[0];var setTmTemplate=tmTpl[1];
+  var tmPh=useState("");var tmPhone=tmPh[0];var setTmPhone=tmPh[1];
+  var tmNm=useState("");var tmName=tmNm[0];var setTmName=tmNm[1];
+  var tmVars=useState({});var tmVariables=tmVars[0];var setTmVariables=tmVars[1];
+  var tmFile=useState(null);var tmFileVal=tmFile[0];var setTmFile=tmFile[1];
+  var tmFileUploadedUrl=useState(null);var tmFileUrlVal=tmFileUploadedUrl[0];var setTmFileUrl=tmFileUploadedUrl[1];
+  var tmSending=useState(false);var tmSendingVal=tmSending[0];var setTmSending=tmSending[1];
+  var tmFileInputRef=useRef(null);
+
   var loggedIn=!!user;
 
   var loadContacts=function(){if(!user)return;var url=API+"/contacts?";if(filterCh!=="all")url+="channel="+filterCh+"&";if(user.role==="agent"&&user.department){url+="department="+user.department+"&"}else if(filterDept!=="all"){url+="department="+filterDept+"&"}fetch(url).then(function(r){return r.json()}).then(setContacts).catch(function(){})};
@@ -222,6 +236,66 @@ function App(){
   var resumeAi=async function(){if(!selected)return;try{var res=await fetch(API+"/contacts/"+selected.id+"/resume-ai",{method:"POST"});var updated=await res.json();setSelected(updated);loadContacts()}catch(err){console.error(err);alert("Error al reactivar Claudia")}};
   var pauseAi=async function(){if(!selected)return;try{var res=await fetch(API+"/contacts/"+selected.id+"/pause-ai",{method:"POST"});var updated=await res.json();setSelected(updated);loadContacts()}catch(err){console.error(err);alert("Error al pausar Claudia")}};
   var regenerateFicha=async function(){if(!selected)return;if(!confirm("Generar ficha con los datos del cliente? Se insertara en el chat como un mensaje."))return;try{var res=await fetch(API+"/contacts/"+selected.id+"/regenerate-ficha",{method:"POST"});var data=await res.json();if(res.ok){var msgs=await fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()});setMessages(msgs);setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}else{alert(data.error||"Error al generar ficha")}}catch(err){alert("Error de conexion")}};
+
+  // === PLANTILLAS WHATSAPP ===
+  var loadTemplates=async function(){try{var res=await fetch(API+"/templates");var data=await res.json();setTemplates(data.templates||[]);setTemplatesLoaded(true);return data.templates||[]}catch(err){console.error("Error cargando templates:",err);setTemplates([]);setTemplatesLoaded(true);return[]}};
+  var openTemplateModalNew=function(){setTmMode("new");setTmTemplate(null);setTmPhone("");setTmName("");setTmVariables({});setTmFile(null);setTmFileUrl(null);if(!templatesLoaded)loadTemplates();setShowTemplateModal(true)};
+  var openTemplateModalExisting=function(){if(!selected||selected.channel!=="whatsapp"){alert("Las plantillas solo funcionan para contactos de WhatsApp");return}setTmMode("existing");setTmTemplate(null);setTmPhone(selected.phone||selected.channel_id||"");setTmName(selected.name||"");setTmVariables({});setTmFile(null);setTmFileUrl(null);if(!templatesLoaded)loadTemplates();setShowTemplateModal(true)};
+  var closeTemplateModal=function(){setShowTemplateModal(false);setTmTemplate(null);setTmFile(null);setTmFileUrl(null);setTmSending(false)};
+  var handleTmFileSelect=async function(file){if(!file)return;setTmFile(file);var formData=new FormData();formData.append("file",file);try{var res=await fetch(API+"/templates/upload-attachment",{method:"POST",body:formData});var data=await res.json();if(res.ok){setTmFileUrl(data.url)}else{alert(data.error||"Error subiendo archivo");setTmFile(null)}}catch(e){alert("Error subiendo archivo");setTmFile(null)}};
+  var handleSendTemplate=async function(){
+    if(!tmTemplate){alert("Elegi una plantilla");return}
+    // Validar variables
+    var numVars=tmTemplate.bodyVariablesCount||0;
+    var bodyParams=[];
+    for(var i=1;i<=numVars;i++){
+      var v=tmVariables[i]||"";
+      if(!v.trim()){alert("Completa la variable {{"+i+"}}");return}
+      bodyParams.push(v.trim());
+    }
+    // Validar media si requiere
+    var needsMedia=tmTemplate.hasMediaHeader;
+    if(needsMedia&&!tmFileUrlVal){alert("Esta plantilla requiere adjuntar un archivo ("+tmTemplate.headerType+")");return}
+    var attachmentType=tmTemplate.headerType;
+    var attachmentFilename=tmFileVal?tmFileVal.name:null;
+
+    setTmSending(true);
+    try{
+      if(tmModeVal==="new"){
+        if(!tmPhone.trim()){alert("Ingresa el numero de telefono");setTmSending(false);return}
+        if(!tmName.trim()){alert("Ingresa el nombre del cliente");setTmSending(false);return}
+        var res=await fetch(API+"/templates/new-contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:tmPhone.trim(),name:tmName.trim(),template_name:tmTemplate.name,language_code:tmTemplate.language,body_params:bodyParams,attachment_url:tmFileUrlVal,attachment_type:attachmentType,attachment_filename:attachmentFilename,agent_name:user.name})});
+        var data=await res.json();
+        if(data.success){
+          alert("Plantilla enviada a "+tmName+" ("+data.phoneUsed+")"+(data.isNew?". Se creo un nuevo contacto.":". Se uso un contacto existente."));
+          closeTemplateModal();
+          loadContacts();
+          // Abrir la conversacion del nuevo contacto
+          if(data.contact)setSelected(data.contact);
+        }else{
+          var errMsg=data.sendResult&&data.sendResult.error?data.sendResult.error:(data.error||"Error enviando plantilla");
+          alert("Error: "+errMsg);
+        }
+      }else{
+        // Modo existing: enviar a contacto seleccionado
+        var res2=await fetch(API+"/contacts/"+selected.id+"/send-template",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({template_name:tmTemplate.name,language_code:tmTemplate.language,body_params:bodyParams,attachment_url:tmFileUrlVal,attachment_type:attachmentType,attachment_filename:attachmentFilename,agent_name:user.name})});
+        var data2=await res2.json();
+        if(data2.sendResult&&data2.sendResult.success){
+          alert("Plantilla enviada a "+selected.name);
+          closeTemplateModal();
+          // Refrescar mensajes
+          var msgs=await fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()});
+          setMessages(msgs);
+          if(data2.contact)setSelected(data2.contact);
+          loadContacts();
+        }else{
+          var errMsg2=data2.sendResult&&data2.sendResult.error?data2.sendResult.error:(data2.error||"Error enviando plantilla");
+          alert("Error: "+errMsg2);
+        }
+      }
+    }catch(err){alert("Error de conexion: "+err.message)}
+    setTmSending(false);
+  };
   var updateContact=async function(id,updates){try{var res=await fetch(API+"/contacts/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(updates)});var updated=await res.json();setSelected(updated);loadContacts();setShowReassign(false)}catch(err){console.error(err)}};
   var selectContact=function(c){setSelected(c);setShowReassign(false);setShowLostReasons(false);setShowClipMenu(false);setShowContactPicker(false);setShowReminderForm(false);setTab("info")};
   var createUser=async function(){if(!nfUsername||!nfPassword||!nfName){alert("Completa todos los campos");return}try{var res=await fetch(API+"/users",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:nfUsername,password:nfPassword,name:nfName,role:nfRole,department:nfRole==="admin"?null:nfDept})});var data=await res.json();if(res.ok){alert("Usuario "+data.name+" creado correctamente");setShowNewForm(false);setNfUsername("");setNfPassword("");setNfName("");setNfRole("agent");setNfDept("ventas");loadUsers()}else{alert(data.error||"Error al crear usuario")}}catch(e){alert("Error de conexion")}};
@@ -287,6 +361,7 @@ function App(){
       React.createElement("div",{style:{flex:1,display:"grid",gridTemplateColumns:"280px 1fr 290px",overflow:"hidden"}},
         React.createElement("div",{style:{borderRight:"1px solid #e2e2e0",background:"#fff",display:"flex",flexDirection:"column",overflow:"hidden"}},
           React.createElement("div",{style:{padding:"12px 14px",borderBottom:"1px solid #e2e2e0"}},
+            React.createElement("button",{onClick:openTemplateModalNew,style:{width:"100%",padding:"8px 12px",fontSize:12,borderRadius:8,border:"1px solid #25D366",background:"#E7F9EE",color:"#1A7F3F",cursor:"pointer",fontWeight:600,marginBottom:10,display:"flex",alignItems:"center",justifyContent:"center",gap:6}},"\u270F\uFE0F Nuevo contacto WhatsApp"),
             React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#999",letterSpacing:"0.05em",marginBottom:6}},"CANALES"),
             React.createElement("div",{style:{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}},
               React.createElement("button",{onClick:function(){setFilterCh("all")},style:{fontSize:11,padding:"3px 10px",borderRadius:20,cursor:"pointer",border:filterCh==="all"?"1px solid #999":"1px solid #ddd",background:filterCh==="all"?"#f0f0ee":"#fff",color:filterCh==="all"?"#111":"#888"}},"Todos"),
@@ -344,7 +419,11 @@ function App(){
                   React.createElement("input",{value:reminderNote,onChange:function(e){setReminderNote(e.target.value)},placeholder:"Nota del recordatorio...",style:{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid #ddd",fontSize:12,fontFamily:"inherit",outline:"none",marginBottom:6}}),
                   React.createElement("button",{onClick:handleCreateReminder,disabled:!reminderDate,style:{padding:"6px 14px",fontSize:12,borderRadius:6,border:"none",background:reminderDate?"#185FA5":"#ccc",color:"#fff",cursor:reminderDate?"pointer":"not-allowed",fontWeight:600}},"Crear recordatorio")),
                 uploading&&React.createElement("div",{style:{marginBottom:8,padding:"8px 12px",background:"#E6F1FB",border:"1px solid #B5D4F4",borderRadius:8,fontSize:12,color:"#185FA5",display:"flex",alignItems:"center",gap:8}},React.createElement("div",{style:{width:6,height:6,borderRadius:"50%",background:"#185FA5",animation:"dotPulse 1s infinite"}}),"Subiendo archivo..."),
-                React.createElement("div",{style:{display:"flex",gap:8,alignItems:"flex-end"}},React.createElement("button",{onClick:function(){setShowClipMenu(!showClipMenu);setShowContactPicker(false);setShowReminderForm(false)},style:{width:38,height:38,borderRadius:"50%",border:"none",background:showClipMenu?"#185FA5":"#f0f0ee",color:showClipMenu?"#fff":"#555",fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s",transform:showClipMenu?"rotate(45deg)":"rotate(0deg)",fontWeight:300,lineHeight:1}},"+"),React.createElement("textarea",{value:msgText,onChange:function(e){setMsgText(e.target.value)},onKeyDown:function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg()}},placeholder:"Escribir mensaje...",rows:1,style:{flex:1,resize:"none",border:"1px solid #ddd",borderRadius:10,padding:"9px 14px",fontSize:13,fontFamily:"inherit",color:"#111",outline:"none",minHeight:40,maxHeight:100}}),React.createElement("button",{onClick:sendMsg,style:{background:"#185FA5",color:"#fff",border:"none",borderRadius:10,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}},"Enviar"))))
+                React.createElement("div",{style:{display:"flex",gap:8,alignItems:"flex-end"}},
+                  React.createElement("button",{onClick:function(){setShowClipMenu(!showClipMenu);setShowContactPicker(false);setShowReminderForm(false)},style:{width:38,height:38,borderRadius:"50%",border:"none",background:showClipMenu?"#185FA5":"#f0f0ee",color:showClipMenu?"#fff":"#555",fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s",transform:showClipMenu?"rotate(45deg)":"rotate(0deg)",fontWeight:300,lineHeight:1}},"+"),
+                  React.createElement("textarea",{value:msgText,onChange:function(e){setMsgText(e.target.value)},onKeyDown:function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg()}},placeholder:"Escribir mensaje...",rows:1,style:{flex:1,resize:"none",border:"1px solid #ddd",borderRadius:10,padding:"9px 14px",fontSize:13,fontFamily:"inherit",color:"#111",outline:"none",minHeight:40,maxHeight:100}}),
+                  selected.channel==="whatsapp"&&React.createElement("button",{onClick:openTemplateModalExisting,title:"Enviar plantilla (util cuando pasaron mas de 24hs)",style:{background:"#fff",color:"#25D366",border:"1px solid #25D366",borderRadius:10,padding:"9px 12px",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}},"\u{1F4CB} Plantilla"),
+                  React.createElement("button",{onClick:sendMsg,style:{background:"#185FA5",color:"#fff",border:"none",borderRadius:10,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}},"Enviar"))))
           :React.createElement("div",{style:{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"#ccc",fontSize:14}},"Selecciona un contacto")),
 
         React.createElement("div",{style:{borderLeft:"1px solid #e2e2e0",background:"#fff",display:"flex",flexDirection:"column",overflow:"hidden"}},
@@ -529,7 +608,75 @@ function App(){
         (metrics.lostStats||[]).length>0&&React.createElement("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e2e2e0",padding:16}},
           React.createElement("div",{style:{fontSize:13,fontWeight:600,color:"#EB3B5A",marginBottom:12}},"\u274C Motivos de perdida"),
           (metrics.lostStats||[]).map(function(l){return React.createElement("div",{key:l.lost_reason,style:{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #f0f0ee",fontSize:12}},React.createElement("span",{style:{color:"#333"}},LOST_REASONS[l.lost_reason]||l.lost_reason),React.createElement("span",{style:{fontWeight:600,color:"#EB3B5A"}},l.count))}))
-      )))
+      ))),
+
+    // Modal de envio de plantilla WhatsApp
+    showTemplateModal&&React.createElement("div",{style:{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget)closeTemplateModal()}},
+      React.createElement("div",{style:{background:"#fff",borderRadius:12,padding:24,width:"100%",maxWidth:520,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",animation:"slideIn .2s ease"}},
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:16,fontWeight:700,color:"#111"}},tmModeVal==="new"?"\u{1F4CB} Enviar plantilla a nuevo contacto":"\u{1F4CB} Enviar plantilla por WhatsApp"),
+            React.createElement("div",{style:{fontSize:11,color:"#888",marginTop:2}},tmModeVal==="new"?"Inicia conversacion con un numero nuevo":"Util cuando pasaron mas de 24hs desde el ultimo mensaje del cliente")),
+          React.createElement("button",{onClick:closeTemplateModal,style:{border:"none",background:"none",fontSize:20,cursor:"pointer",color:"#999",padding:"0 4px"}},"\u2715")),
+
+        // Datos del contacto (solo en modo "new")
+        tmModeVal==="new"&&React.createElement("div",{style:{marginBottom:14,paddingBottom:14,borderBottom:"1px solid #f0f0ee"}},
+          React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#888",marginBottom:6,letterSpacing:"0.05em"}},"DATOS DEL CLIENTE"),
+          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
+            React.createElement("input",{type:"text",value:tmName,onChange:function(e){setTmName(e.target.value)},placeholder:"Nombre y apellido",style:{padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}}),
+            React.createElement("input",{type:"tel",value:tmPhone,onChange:function(e){setTmPhone(e.target.value)},placeholder:"261 353 9384",style:{padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}})),
+          React.createElement("div",{style:{fontSize:10,color:"#999",marginTop:4}},"El telefono se acepta con o sin prefijo. Ejemplos validos: 2613539384, +5492613539384, 261 3 539384")),
+
+        // Contacto existente (solo en modo "existing")
+        tmModeVal==="existing"&&selected&&React.createElement("div",{style:{marginBottom:14,paddingBottom:14,borderBottom:"1px solid #f0f0ee",padding:"10px 14px",background:"#f9f9f7",borderRadius:8}},
+          React.createElement("div",{style:{fontSize:12,color:"#888"}},"Enviar a:"),
+          React.createElement("div",{style:{fontSize:14,fontWeight:600,color:"#111"}},selected.name),
+          React.createElement("div",{style:{fontSize:11,color:"#555"}},selected.phone||selected.channel_id||"")),
+
+        // Selector de plantilla
+        React.createElement("div",{style:{marginBottom:14}},
+          React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#888",marginBottom:6,letterSpacing:"0.05em"}},"PLANTILLA"),
+          !templatesLoaded?React.createElement("div",{style:{fontSize:12,color:"#999",padding:12,background:"#f9f9f7",borderRadius:8}},"Cargando plantillas..."):
+          templates.length===0?React.createElement("div",{style:{fontSize:12,color:"#EB3B5A",padding:12,background:"#FDEBEF",borderRadius:8}},"No hay plantillas aprobadas disponibles. Creaalas en Meta Business Suite."):
+          React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6,maxHeight:180,overflowY:"auto"}},
+            templates.map(function(t){var isSelected=tmTemplate&&tmTemplate.name===t.name;return React.createElement("div",{key:t.name,onClick:function(){setTmTemplate(t);setTmVariables({})},style:{padding:"10px 12px",border:isSelected?"2px solid #25D366":"1px solid #ddd",borderRadius:8,cursor:"pointer",background:isSelected?"#E7F9EE":"#fff"}},
+              React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
+                React.createElement("span",{style:{fontSize:13,fontWeight:600,color:"#111"}},t.name),
+                React.createElement("span",{style:{fontSize:10,padding:"2px 6px",borderRadius:10,background:t.category==="UTILITY"?"#E6F1FB":"#FDF2E9",color:t.category==="UTILITY"?"#185FA5":"#E87B35"}},t.category)),
+              React.createElement("div",{style:{fontSize:11,color:"#666",lineHeight:1.4,maxHeight:32,overflow:"hidden",textOverflow:"ellipsis"}},t.bodyText.substring(0,120)+(t.bodyText.length>120?"...":"")),
+              t.hasMediaHeader&&React.createElement("div",{style:{fontSize:10,color:"#8854D0",marginTop:4,fontWeight:500}},"\u{1F4CE} Acepta adjunto ("+t.headerType+")"))}))),
+
+        // Variables de la plantilla
+        tmTemplate&&tmTemplate.bodyVariablesCount>0&&React.createElement("div",{style:{marginBottom:14}},
+          React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#888",marginBottom:6,letterSpacing:"0.05em"}},"VARIABLES DEL MENSAJE"),
+          Array.from({length:tmTemplate.bodyVariablesCount}).map(function(_,idx){var n=idx+1;var autoVal=(n===1&&tmName)?tmName:"";return React.createElement("div",{key:n,style:{marginBottom:6}},
+            React.createElement("label",{style:{fontSize:11,color:"#666",display:"block",marginBottom:3}},"Valor de {{"+n+"}}"+(n===1?" (tip: suele ser el nombre)":"")),
+            React.createElement("input",{type:"text",value:tmVariables[n]||autoVal,onChange:function(e){var nw=Object.assign({},tmVariables);nw[n]=e.target.value;setTmVariables(nw)},placeholder:"Texto a reemplazar",style:{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontFamily:"inherit",outline:"none"}}))})),
+
+        // Attachment (si la plantilla lo requiere)
+        tmTemplate&&tmTemplate.hasMediaHeader&&React.createElement("div",{style:{marginBottom:14}},
+          React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#888",marginBottom:6,letterSpacing:"0.05em"}},"ADJUNTAR "+tmTemplate.headerType.toUpperCase()+" (REQUERIDO)"),
+          React.createElement("input",{ref:tmFileInputRef,type:"file",accept:tmTemplate.headerType==="document"?".pdf,.doc,.docx,.xls,.xlsx":tmTemplate.headerType==="image"?"image/*":"video/*",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleTmFileSelect(e.target.files[0])}}),
+          !tmFileVal?React.createElement("button",{onClick:function(){tmFileInputRef.current&&tmFileInputRef.current.click()},style:{width:"100%",padding:"12px",borderRadius:8,border:"2px dashed #ccc",background:"#f9f9f7",color:"#666",cursor:"pointer",fontSize:13}},"\u{1F4CE} Seleccionar archivo"):
+          React.createElement("div",{style:{padding:"10px 14px",background:"#E7F9EE",border:"1px solid #C0DD97",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"space-between"}},
+            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}},
+              React.createElement("span",{style:{fontSize:18}},"\u{1F4CE}"),
+              React.createElement("div",{style:{minWidth:0,flex:1}},
+                React.createElement("div",{style:{fontSize:12,fontWeight:500,color:"#085041",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},tmFileVal.name),
+                React.createElement("div",{style:{fontSize:10,color:"#085041"}},(tmFileUrlVal?"Subido OK":"Subiendo...")))),
+            React.createElement("button",{onClick:function(){setTmFile(null);setTmFileUrl(null)},style:{border:"none",background:"none",fontSize:16,cursor:"pointer",color:"#085041",padding:4,flexShrink:0}},"\u2715"))),
+
+        // Preview
+        tmTemplate&&React.createElement("div",{style:{marginBottom:14}},
+          React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#888",marginBottom:6,letterSpacing:"0.05em"}},"VISTA PREVIA"),
+          React.createElement("div",{style:{padding:"12px 14px",background:"#DCF8C6",borderRadius:8,fontSize:13,color:"#111",lineHeight:1.5,whiteSpace:"pre-wrap"}},
+            tmFileVal&&React.createElement("div",{style:{marginBottom:8,padding:8,background:"rgba(0,0,0,0.05)",borderRadius:6,fontSize:11,color:"#555"}},"\u{1F4CE} "+tmFileVal.name),
+            (function(){var txt=tmTemplate.bodyText;for(var i=1;i<=(tmTemplate.bodyVariablesCount||0);i++){var v=tmVariables[i]||(i===1&&tmName?tmName:"{{"+i+"}}");txt=txt.replace(new RegExp("\\{\\{"+i+"\\}\\}","g"),v)}return txt})())),
+
+        // Botones de accion
+        React.createElement("div",{style:{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}},
+          React.createElement("button",{onClick:closeTemplateModal,disabled:tmSendingVal,style:{padding:"10px 18px",fontSize:13,borderRadius:8,border:"1px solid #ddd",background:"#fff",color:"#555",cursor:tmSendingVal?"not-allowed":"pointer",opacity:tmSendingVal?0.5:1}},"Cancelar"),
+          React.createElement("button",{onClick:handleSendTemplate,disabled:tmSendingVal||!tmTemplate,style:{padding:"10px 24px",fontSize:13,borderRadius:8,border:"none",background:(tmSendingVal||!tmTemplate)?"#ccc":"#25D366",color:"#fff",cursor:(tmSendingVal||!tmTemplate)?"not-allowed":"pointer",fontWeight:600}},tmSendingVal?"Enviando...":"Enviar plantilla"))))
   );
 }
 ReactDOM.render(React.createElement(App),document.getElementById("root"));
