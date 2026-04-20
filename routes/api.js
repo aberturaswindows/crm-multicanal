@@ -48,8 +48,15 @@ function pauseAiForContact(db, contactId, agentName) {
 }
 
 router.get("/media/:filename", function(req, res) {
-  var filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+  // Sanitizar nombre: permitir letras, numeros, punto, guion bajo, guion, signo igual, dos puntos.
+  // Estos caracteres aparecen en IDs de WhatsApp (base64url-like) y son seguros para filenames.
+  // Bloquear solo caracteres que podrian ser un ataque de path traversal: / \ .. espacios raros.
+  var raw = req.params.filename;
+  var filename = raw.replace(/[^a-zA-Z0-9._\-=:]/g, "");
+  // Anti path traversal extra
+  if (filename.indexOf("..") !== -1) filename = filename.replace(/\.\./g, "");
   var filepath = path.join(MEDIA_DIR, filename);
+
   if (fs.existsSync(filepath)) {
     var ext = path.extname(filename).toLowerCase();
     var mimeTypes = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".pdf": "application/pdf", ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xls": "application/vnd.ms-excel", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".txt": "text/plain", ".csv": "text/csv", ".zip": "application/zip", ".bin": "application/octet-stream" };
@@ -57,6 +64,12 @@ router.get("/media/:filename", function(req, res) {
     res.setHeader("Content-Disposition", "inline; filename=\"" + filename + "\"");
     res.sendFile(filepath);
   } else {
+    // Debug: loggear que archivo se pidio y que hay en disco (limitado a 10 archivos)
+    console.error("[MEDIA-404] Pidieron: '" + raw + "' | Sanitizado: '" + filename + "' | Path: " + filepath);
+    try {
+      var files = fs.readdirSync(MEDIA_DIR).slice(-10);
+      console.error("[MEDIA-404] Ultimos 10 archivos en " + MEDIA_DIR + ": " + files.join(", "));
+    } catch(e) {}
     res.status(404).json({ error: "Archivo no encontrado" });
   }
 });
