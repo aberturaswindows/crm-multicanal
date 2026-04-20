@@ -133,6 +133,13 @@ async function sendTemplate(to, templateName, languageCode, bodyParams, headerMe
     return { success: true, simulated: true };
   }
 
+  // Lista de codigos de idioma a probar. Si Meta devuelve error 132001 (template no existe en ese idioma),
+  // probamos con los codigos fallback. Esto soluciona un comportamiento confuso de Meta donde
+  // la plantilla se muestra con un codigo (ej: es_AR) pero internamente se registra con otro (ej: es).
+  var languagesToTry = [languageCode || "es_AR"];
+  if (languagesToTry[0] === "es_AR") languagesToTry.push("es");
+  else if (languagesToTry[0] === "es") languagesToTry.push("es_AR");
+
   var components = [];
 
   // Header con media (documento, imagen o video)
@@ -157,35 +164,45 @@ async function sendTemplate(to, templateName, languageCode, bodyParams, headerMe
     });
   }
 
-  var body = {
-    messaging_product: "whatsapp",
-    to: to,
-    type: "template",
-    template: {
-      name: templateName,
-      language: { code: languageCode || "es_AR" }
-    }
-  };
-  if (components.length > 0) body.template.components = components;
+  var lastError = null;
+  for (var i = 0; i < languagesToTry.length; i++) {
+    var lang = languagesToTry[i];
+    var body = {
+      messaging_product: "whatsapp",
+      to: to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: lang }
+      }
+    };
+    if (components.length > 0) body.template.components = components;
 
-  try {
-    var res = await axios.post(GRAPH_API + "/" + phoneId + "/messages", body, {
-      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" }
-    });
-    var msgId = res.data.messages && res.data.messages[0] ? res.data.messages[0].id : null;
-    console.log("[WHATSAPP] Plantilla '" + templateName + "' enviada a " + to);
-    return { success: true, messageId: msgId };
-  } catch (err) {
-    var errData = err.response ? err.response.data : null;
-    var errMsg = err.message;
-    var errorCode = null;
-    if (errData && errData.error) {
-      errMsg = errData.error.message || errMsg;
-      errorCode = errData.error.code;
+    try {
+      var res = await axios.post(GRAPH_API + "/" + phoneId + "/messages", body, {
+        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" }
+      });
+      var msgId = res.data.messages && res.data.messages[0] ? res.data.messages[0].id : null;
+      console.log("[WHATSAPP] Plantilla '" + templateName + "' enviada a " + to + " (idioma: " + lang + ")");
+      return { success: true, messageId: msgId, languageUsed: lang };
+    } catch (err) {
+      var errData = err.response ? err.response.data : null;
+      var errorCode = errData && errData.error ? errData.error.code : null;
+      lastError = { data: errData, message: err.message, code: errorCode };
+      // Si el error es 132001 (template name doesnt exist in translation), probar el siguiente codigo
+      if (errorCode === 132001 && i < languagesToTry.length - 1) {
+        console.log("[WHATSAPP] Plantilla '" + templateName + "' no existe en '" + lang + "', reintentando con siguiente codigo...");
+        continue;
+      }
+      // Si es otro error o ya no quedan codigos, devolver el error
+      break;
     }
-    console.error("[WHATSAPP] Error enviando template:", errData || err.message);
-    return { success: false, error: errMsg, errorCode: errorCode };
   }
+
+  var errMsg = lastError && lastError.data && lastError.data.error ? lastError.data.error.message : (lastError ? lastError.message : "Error desconocido");
+  var errorCode = lastError ? lastError.code : null;
+  console.error("[WHATSAPP] Error enviando template despues de probar idiomas " + JSON.stringify(languagesToTry) + ":", lastError ? lastError.data : null);
+  return { success: false, error: errMsg, errorCode: errorCode, languagesTried: languagesToTry };
 }
 
 /**
