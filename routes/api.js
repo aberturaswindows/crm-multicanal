@@ -448,6 +448,204 @@ router.post("/contacts/:id/regenerate-ficha", async function(req, res) {
 });
 
 // ============================================
+// PLANTILLAS WHATSAPP
+// ============================================
+
+// Listar plantillas aprobadas desde Meta
+router.get("/templates", async function(req, res) {
+  try {
+    var result = await whatsapp.listTemplates();
+    if (!result.success) {
+      return res.status(500).json({ error: result.error, templates: [] });
+    }
+    res.json({ templates: result.templates });
+  } catch (err) {
+    console.error("[TEMPLATES] Error:", err.message);
+    res.status(500).json({ error: err.message, templates: [] });
+  }
+});
+
+// Subir PDF temporal (para usarlo como adjunto en una plantilla)
+router.post("/templates/upload-attachment", upload.single("file"), function(req, res) {
+  if (!req.file) return res.status(400).json({ error: "No se recibio ningun archivo" });
+  var mediaUrl = "/api/media/" + req.file.filename;
+  var publicUrl = (process.env.RAILWAY_PUBLIC_DOMAIN ? "https://" + process.env.RAILWAY_PUBLIC_DOMAIN : (req.protocol + "://" + req.get("host"))) + mediaUrl;
+  res.json({
+    success: true,
+    filename: req.file.filename,
+    originalName: req.file.originalname,
+    size: req.file.size,
+    url: mediaUrl,
+    publicUrl: publicUrl
+  });
+});
+
+// Enviar plantilla a un contacto YA EXISTENTE en el CRM
+router.post("/contacts/:id/send-template", async function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  if (contact.channel !== "whatsapp") return res.status(400).json({ error: "Las plantillas solo funcionan para WhatsApp" });
+
+  var templateName = req.body.template_name;
+  var languageCode = req.body.language_code || "es_AR";
+  var bodyParams = req.body.body_params || [];
+  var attachmentUrl = req.body.attachment_url || null;
+  var attachmentType = req.body.attachment_type || null; // "document", "image", "video"
+  var attachmentFilename = req.body.attachment_filename || null;
+  var agentName = req.body.agent_name || "Agente";
+
+  if (!templateName) return res.status(400).json({ error: "template_name es requerido" });
+
+  var headerMedia = null;
+  var publicAttachmentUrl = null;
+  if (attachmentUrl && attachmentType) {
+    // Convertir URL relativa a absoluta (Meta necesita URL publica)
+    if (attachmentUrl.indexOf("http") === 0) {
+      publicAttachmentUrl = attachmentUrl;
+    } else {
+      publicAttachmentUrl = (process.env.RAILWAY_PUBLIC_DOMAIN ? "https://" + process.env.RAILWAY_PUBLIC_DOMAIN : (req.protocol + "://" + req.get("host"))) + attachmentUrl;
+    }
+    headerMedia = { type: attachmentType, url: publicAttachmentUrl, filename: attachmentFilename };
+  }
+
+  var sendResult = await whatsapp.sendTemplate(contact.channel_id, templateName, languageCode, bodyParams, headerMedia, contact.phone_line || 1);
+
+  // Guardar el mensaje en el CRM
+  var contentToSave = "[Plantilla: " + templateName + "]";
+  if (bodyParams.length > 0) {
+    contentToSave += " " + bodyParams.join(", ");
+  }
+  if (attachmentFilename) {
+    contentToSave += " [Adjunto: " + attachmentFilename + "]";
+  }
+
+  var mediaType = null;
+  var localMediaUrl = null;
+  if (attachmentUrl && attachmentType === "document") {
+    mediaType = "file";
+    localMediaUrl = attachmentUrl;
+  } else if (attachmentUrl && attachmentType === "image") {
+    mediaType = "image";
+    localMediaUrl = attachmentUrl;
+  }
+
+  var result = db.prepare(
+    "INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, ?, ?, ?, ?)"
+  ).run(contact.id, contentToSave, contact.channel, agentName, mediaType, localMediaUrl);
+
+  // Pausar Claudia porque un humano intervino
+  pauseAiForContact(db, contact.id, agentName);
+
+  var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
+  console.log("[TEMPLATE] " + agentName + " envio '" + templateName + "' a " + contact.name + " | Exito: " + sendResult.success);
+  res.json({ message: message, sendResult: sendResult, contact: db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id) });
+});
+
+// Enviar plantilla a un numero NUEVO (crea el contacto en el CRM)
+router.post("/templates/new-contact", async function(req, res) {
+  var db = getDb();
+
+  var phone = req.body.phone;
+  var name = req.body.name;
+  var templateName = req.body.template_name;
+  var languageCode = req.body.language_code || "es_AR";
+  var bodyParams = req.body.body_params || [];
+  var attachmentUrl = req.body.attachment_url || null;
+  var attachmentType = req.body.attachment_type || null;
+  var attachmentFilename = req.body.attachment_filename || null;
+  var department = req.body.department || "ventas";
+  var agentName = req.body.agent_name || "Agente";
+
+  if (!phone) return res.status(400).json({ error: "phone es requerido" });
+  if (!name) return res.status(400).json({ error: "name es requerido" });
+  if (!templateName) return res.status(400).json({ error: "template_name es requerido" });
+
+  // Normalizar el telefono: sacar espacios, guiones, parentesis, signo +
+  var cleanPhone = String(phone).replace(/[\s\-\(\)\+]/g, "");
+
+  // Detectar si necesita prefijo de pais. Si es un numero argentino sin prefijo,
+  // le agregamos 549 (codigo argentina + 9 para celulares)
+  if (cleanPhone.length === 10 && cleanPhone.indexOf("54") !== 0) {
+    // ej: "2613539384" -> "5492613539384"
+    cleanPhone = "549" + cleanPhone;
+  } else if (cleanPhone.length === 11 && cleanPhone.indexOf("15") === 3) {
+    // ej: "26115393843" (formato viejo con 15) -> sacar el 15 y agregar 549
+    cleanPhone = "549" + cleanPhone.substring(0, 3) + cleanPhone.substring(5);
+  } else if (cleanPhone.length === 12 && cleanPhone.indexOf("54") === 0 && cleanPhone.charAt(2) !== "9") {
+    // ej: "542613539384" -> "5492613539384" (agregar el 9)
+    cleanPhone = "549" + cleanPhone.substring(2);
+  }
+
+  // Verificar si ya existe un contacto con ese numero en WhatsApp
+  var existing = db.prepare("SELECT * FROM contacts WHERE channel = 'whatsapp' AND channel_id = ?").get(cleanPhone);
+  var contactId;
+  var isNew = false;
+
+  if (existing) {
+    contactId = existing.id;
+    // Actualizar nombre si el usuario lo cambio
+    if (name && name !== existing.name) {
+      db.prepare("UPDATE contacts SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(name, contactId);
+    }
+  } else {
+    var result = db.prepare(
+      "INSERT INTO contacts (name, phone, channel, channel_id, phone_line, department, status, origin, conversation_stage) VALUES (?, ?, 'whatsapp', ?, 1, ?, 'lead', 'outbound', 'consulta')"
+    ).run(name, cleanPhone, cleanPhone, department);
+    contactId = result.lastInsertRowid;
+    isNew = true;
+  }
+
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contactId);
+
+  // Preparar el header media si corresponde
+  var headerMedia = null;
+  if (attachmentUrl && attachmentType) {
+    var publicAttachmentUrl;
+    if (attachmentUrl.indexOf("http") === 0) {
+      publicAttachmentUrl = attachmentUrl;
+    } else {
+      publicAttachmentUrl = (process.env.RAILWAY_PUBLIC_DOMAIN ? "https://" + process.env.RAILWAY_PUBLIC_DOMAIN : (req.protocol + "://" + req.get("host"))) + attachmentUrl;
+    }
+    headerMedia = { type: attachmentType, url: publicAttachmentUrl, filename: attachmentFilename };
+  }
+
+  // Enviar la plantilla
+  var sendResult = await whatsapp.sendTemplate(cleanPhone, templateName, languageCode, bodyParams, headerMedia, contact.phone_line || 1);
+
+  // Guardar el mensaje en el historial
+  var contentToSave = "[Plantilla: " + templateName + "]";
+  if (bodyParams.length > 0) contentToSave += " " + bodyParams.join(", ");
+  if (attachmentFilename) contentToSave += " [Adjunto: " + attachmentFilename + "]";
+
+  var mediaType = null;
+  var localMediaUrl = null;
+  if (attachmentUrl && attachmentType === "document") {
+    mediaType = "file";
+    localMediaUrl = attachmentUrl;
+  } else if (attachmentUrl && attachmentType === "image") {
+    mediaType = "image";
+    localMediaUrl = attachmentUrl;
+  }
+
+  db.prepare(
+    "INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, 'whatsapp', ?, ?, ?)"
+  ).run(contactId, contentToSave, agentName, mediaType, localMediaUrl);
+
+  // Pausar Claudia porque fue una interaccion humana
+  pauseAiForContact(db, contactId, agentName);
+
+  console.log("[TEMPLATE-NEW] " + agentName + " creo contacto '" + name + "' (" + cleanPhone + ") y envio plantilla '" + templateName + "' | Exito: " + sendResult.success);
+  res.json({
+    success: sendResult.success,
+    isNew: isNew,
+    contact: db.prepare("SELECT * FROM contacts WHERE id = ?").get(contactId),
+    sendResult: sendResult,
+    phoneUsed: cleanPhone
+  });
+});
+
+// ============================================
 // CONTACTS
 // ============================================
 
