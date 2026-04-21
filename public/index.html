@@ -62,7 +62,10 @@ var LOST_REASONS={precio:"Precio excedía presupuesto",competencia:"Eligió otra
 var QUOTE_STATUS={pendiente:{label:"Pendiente",color:T.amber,bg:T.amberBg},enviado:{label:"Enviado",color:T.blue,bg:"rgba(59,130,246,0.1)"},aprobado:{label:"Aprobado",color:T.green,bg:T.greenBg},rechazado:{label:"Rechazado",color:T.red,bg:T.redBg},vencido:{label:"Vencido",color:T.t4,bg:"transparent"}};
 
 /* ── HELPERS ─────────────────────────────────────── */
-var playNotifSound=function(){try{var ctx=new(window.AudioContext||window.webkitAudioContext)();function ding(freq,start){var o=ctx.createOscillator();var g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.type="sine";o.frequency.value=freq;g.gain.setValueAtTime(0,ctx.currentTime+start);g.gain.linearRampToValueAtTime(0.1,ctx.currentTime+start+0.005);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+start+0.4);o.start(ctx.currentTime+start);o.stop(ctx.currentTime+start+0.4)}ding(587,0);ding(784,0.15)}catch(e){}};
+var _audioCtx=null;
+function _getAudioCtx(){if(!_audioCtx){try{_audioCtx=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(_audioCtx&&_audioCtx.state==="suspended")_audioCtx.resume();return _audioCtx}
+document.addEventListener("click",function(){_getAudioCtx()},{once:false,passive:true});
+var playNotifSound=function(){try{var ctx=_getAudioCtx();if(!ctx)return;function ding(freq,start){var o=ctx.createOscillator();var g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.type="sine";o.frequency.value=freq;g.gain.setValueAtTime(0,ctx.currentTime+start);g.gain.linearRampToValueAtTime(0.1,ctx.currentTime+start+0.005);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+start+0.4);o.start(ctx.currentTime+start);o.stop(ctx.currentTime+start+0.4)}ding(587,0);ding(784,0.15)}catch(e){}};
 function getInitials(name){return(name||"?").split(" ").map(function(w){return w[0]}).join("").substring(0,2).toUpperCase()}
 function formatTime(ts){if(!ts)return"";var d=new Date(ts.replace(" ","T")+"Z");return d.getHours()+":"+String(d.getMinutes()).padStart(2,"0")}
 function formatDate(ts){if(!ts)return"-";var d=new Date(ts.replace(" ","T")+"Z");return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()}
