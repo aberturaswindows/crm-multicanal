@@ -41,14 +41,14 @@ var API=window.location.origin+"/api";
 
 /* ── TOKENS ─────────────────────────────────────── */
 var T={
-  bg:"#0F172A",nav:"#080F1C",card:"#1E293B",card2:"#1A2640",hover:"#263348",
-  border:"#2D3E55",borderHi:"#3E5270",
-  t1:"#E2E8F0",t2:"#CBD5E1",t3:"#94A3B8",t4:"#64748B",
-  accent:"#06B6D4",accentBg:"rgba(6,182,212,0.12)",accentBd:"rgba(6,182,212,0.28)",
-  purple:"#8B5CF6",purpleBg:"rgba(139,92,246,0.12)",purpleBd:"rgba(139,92,246,0.28)",
-  green:"#10B981",greenBg:"rgba(16,185,129,0.1)",
-  red:"#F87171",redBg:"rgba(248,113,113,0.1)",
-  amber:"#F59E0B",amberBg:"rgba(245,158,11,0.1)",
+  bg:"#0A0F1E",nav:"#060B18",card:"#111827",card2:"#0F1A2E",hover:"#1A2436",
+  border:"#1E2D42",borderHi:"#2D4060",
+  t1:"#F1F5F9",t2:"#CBD5E1",t3:"#94A3B8",t4:"#4E6480",
+  accent:"#06B6D4",accentBg:"rgba(6,182,212,0.10)",accentBd:"rgba(6,182,212,0.22)",
+  purple:"#8B5CF6",purpleBg:"rgba(139,92,246,0.10)",purpleBd:"rgba(139,92,246,0.22)",
+  green:"#10B981",greenBg:"rgba(16,185,129,0.10)",
+  red:"#F87171",redBg:"rgba(248,113,113,0.10)",
+  amber:"#F59E0B",amberBg:"rgba(245,158,11,0.10)",
   blue:"#3B82F6"
 };
 
@@ -57,7 +57,7 @@ var DEPARTMENTS={ventas:{label:"Ventas",color:T.amber,bg:T.amberBg,icon:"💰"},
 var CHANNELS={whatsapp:{label:"WhatsApp",color:"#25D366",bg:"#25D36615",icon:"WA"},instagram:{label:"Instagram",color:"#E4405F",bg:"#E4405F15",icon:"IG"},facebook:{label:"Facebook",color:"#1877F2",bg:"#1877F215",icon:"FB"},email:{label:"Email",color:"#94A3B8",bg:"#94A3B815",icon:"✉"},telefono:{label:"Teléfono",color:"#F97316",bg:"#F9731615",icon:"📞"}};
 var VISIBLE_CHANNELS=["whatsapp","instagram","facebook"];
 var STAGE_CONFIG={consulta:{label:"Consulta inicial",color:T.t4,step:1},recopilando_datos:{label:"Recopilando datos",color:T.amber,step:2},datos_completos:{label:"Armar presupuesto",color:T.purple,step:3},presupuesto_enviado:{label:"Presupuesto enviado",color:T.blue,step:4},seguimiento:{label:"En seguimiento",color:"#F97316",step:4},cerrado_ganado:{label:"Ganado",color:T.green,step:5},cerrado_perdido:{label:"Perdido",color:T.red,step:5},sin_respuesta:{label:"Sin respuesta",color:T.t4,step:1}};
-var PIPELINE_LABELS=["Prospecto","Medición","Presupuesto","Fabricación","Instalación"];
+var PIPELINE_LABELS=["Primer contacto","Datos relevados","Cotizando","Pres. enviado","Aprobado"];
 var LOST_REASONS={precio:"Precio excedía presupuesto",competencia:"Eligió otra empresa",plazos:"Tiempos de entrega",obra_pausada:"Obra postergada/cancelada",otro:"Otro motivo"};
 var QUOTE_STATUS={pendiente:{label:"Pendiente",color:T.amber,bg:T.amberBg},enviado:{label:"Enviado",color:T.blue,bg:"rgba(59,130,246,0.1)"},aprobado:{label:"Aprobado",color:T.green,bg:T.greenBg},rechazado:{label:"Rechazado",color:T.red,bg:T.redBg},vencido:{label:"Vencido",color:T.t4,bg:"transparent"}};
 
@@ -73,7 +73,7 @@ var ICONS={
   MessageSquare:"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
   Bell:"M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0",
   Search:"m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z",
-  Send:"m22 2-11 20-4-9-9-4 20-11z",
+  Send:"M22 2L11 22l-4-9-9-4zM22 2L11 13",
   Paperclip:"m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48",
   Image:"M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7M16 5h6M19 2v6",
   FileText:"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
@@ -123,7 +123,7 @@ function Avatar(props){
 /* ── BADGE ───────────────────────────────────────── */
 function Badge(props){
   var color=props.color||T.t4;
-  return React.createElement("span",{style:{fontSize:10,padding:"2px 7px",borderRadius:8,background:color+"18",color:color,fontWeight:600,whiteSpace:"nowrap",letterSpacing:0.2,border:"1px solid "+color+"22"}},props.children);
+  return React.createElement("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:6,background:color+"14",color:color,fontWeight:600,whiteSpace:"nowrap",letterSpacing:0.1}},props.children);
 }
 function StageBadge(props){
   var s=STAGE_CONFIG[props.stage];if(!s)return null;
@@ -136,8 +136,8 @@ function StageProgress(props){
   return React.createElement("div",null,
     React.createElement("div",{style:{display:"flex",gap:3,marginBottom:5}},
       Array.from({length:5}).map(function(_,i){return React.createElement("div",{key:i,style:{flex:1,height:5,borderRadius:3,background:i<s.step?"linear-gradient(90deg,"+T.accent+","+T.purple+")":T.border,transition:"background .3s"}})})),
-    React.createElement("div",{style:{display:"flex",justifyContent:"space-between"}},
-      PIPELINE_LABELS.map(function(l,i){return React.createElement("span",{key:i,style:{fontSize:7.5,color:i<s.step?T.accent:T.t4,fontWeight:i===s.step-1?700:400,textAlign:"center",flex:1,lineHeight:1.2}},l)}))
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginTop:5}},
+      PIPELINE_LABELS.map(function(l,i){return React.createElement("span",{key:i,style:{fontSize:9.5,color:i<s.step?T.accent:T.t4,fontWeight:i===s.step-1?700:400,textAlign:"center",flex:1,lineHeight:1.3}},l)}))
   );
 }
 
@@ -582,7 +582,7 @@ function App(){
             )
           ),
           /* AI Routing bar */
-          React.createElement("div",{style:{margin:"8px 14px 0",padding:"8px 14px",background:selected.ai_paused?T.amberBg:T.purpleBg,border:"1px solid "+(selected.ai_paused?T.amber+"30":T.purpleBd),borderRadius:10,display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}},
+          React.createElement("div",{style:{margin:"6px 14px 0",padding:"7px 12px",background:T.card,borderBottom:"1px solid "+T.border,borderRadius:0,display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}},
             React.createElement("div",{style:{width:8,height:8,borderRadius:"50%",background:selected.ai_paused?T.amber:T.purple,boxShadow:selected.ai_paused?"none":"0 0 8px "+T.purple,flexShrink:0}}),
             React.createElement("span",{style:{fontSize:11,fontWeight:700,color:T.t4,letterSpacing:.5,textTransform:"uppercase"}},"Routing IA"),
             selected.ai_paused?
