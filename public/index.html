@@ -323,7 +323,7 @@ function App(){
     if(!user)return;
     var url=API+"/contacts?";
     if(filterCh!=="all"&&filterCh!=="unread")url+="channel="+filterCh+"&";
-    if(user.role==="agent"&&user.department){url+="department="+user.department+"&"}
+    if(filterDept!=="all"){url+="department="+filterDept+"&"}
     else if(filterDept!=="all"){url+="department="+filterDept+"&"}
     fetch(url).then(function(r){return r.json()}).then(function(newContacts){
       if(prevContactCount.current>0){
