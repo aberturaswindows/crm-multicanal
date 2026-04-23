@@ -47,6 +47,26 @@ function pauseAiForContact(db, contactId, agentName) {
   }
 }
 
+// Helper: después de enviar un outgoing a un canal, actualizar su status en DB.
+// sendResult viene de whatsapp.sendMessage / sendMedia / sendTemplate / etc.
+// Si simulated=true (canal no configurado), se marca como 'sent' sin channel_message_id
+// y ese mensaje nunca avanzará por webhooks — lo cual es comportamiento esperado en dev.
+function updateMessageStatus(db, msgId, sendResult) {
+  try {
+    if (sendResult && sendResult.success) {
+      if (sendResult.messageId) {
+        db.prepare("UPDATE messages SET status='sent', sent_at=CURRENT_TIMESTAMP, channel_message_id=? WHERE id=?")
+          .run(sendResult.messageId, msgId);
+      } else {
+        db.prepare("UPDATE messages SET status='sent', sent_at=CURRENT_TIMESTAMP WHERE id=?").run(msgId);
+      }
+    } else {
+      var reason = sendResult && sendResult.error ? sendResult.error : 'Unknown error';
+      db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(reason, msgId);
+    }
+  } catch (e) { console.error("[STATUS] updateMessageStatus error:", e.message); }
+}
+
 router.get("/media/:filename", function(req, res) {
   // Sanitizar nombre: permitir letras, numeros, punto, guion bajo, guion, signo igual, dos puntos.
   // Estos caracteres aparecen en IDs de WhatsApp (base64url-like) y son seguros para filenames.
@@ -102,7 +122,7 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
   if (mediaType === "file" && originalFilename && !caption) contentLabel = "[Archivo: " + originalFilename + "]";
   var msgContent = caption ? caption : contentLabel;
 
-  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, ?, ?, ?, ?)").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl);
+  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, status) VALUES (?, 'outgoing', ?, ?, ?, ?, ?, 'pending')").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl);
   // Guardar nombre original en columna separada (migración idempotente en setup.js garantiza que existe)
   try { db.prepare("UPDATE messages SET original_filename = ? WHERE id = ?").run(originalFilename, result.lastInsertRowid); } catch(e) {}
 
@@ -139,6 +159,7 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
       var waResult = await whatsapp.sendMedia(contact.channel_id, mediaType, publicUrl, caption, contact.phone_line || 1, originalFilename);
       sendResult = waResult;
       if (!waResult.success) {
+        updateMessageStatus(db, result.lastInsertRowid, waResult);
         console.error("[UPLOAD] Meta rechazó el archivo para " + contact.name + " (" + contact.channel_id + "):", waResult.error, "| code:", waResult.errorCode, "| 24h:", waResult.isOutsideWindow);
         return res.status(422).json({
           error: waResult.isOutsideWindow
@@ -156,6 +177,7 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
     sendResult = { success: false, error: err.message };
   }
 
+  updateMessageStatus(db, result.lastInsertRowid, sendResult);
   var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
   res.json({ message: message, sendResult: sendResult, file: { filename: req.file.filename, originalName: originalFilename, size: req.file.size, mediaType: mediaType, url: mediaUrl } });
 });
@@ -179,7 +201,7 @@ router.post("/contacts/:id/share-contact", async function(req, res) {
   if (shared.email) parts.push("Email: " + shared.email);
   var content = parts.join("\n");
 
-  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, ?)").run(contact.id, content, contact.channel, agentName);
+  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, ?, 'pending')").run(contact.id, content, contact.channel, agentName);
 
   // Pausar Claudia porque un humano esta interviniendo
   pauseAiForContact(db, contact.id, agentName);
@@ -197,6 +219,7 @@ router.post("/contacts/:id/share-contact", async function(req, res) {
     sendResult = { success: false, error: err.message };
   }
 
+  updateMessageStatus(db, result.lastInsertRowid, sendResult);
   var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
   console.log("[CONTACTO] " + agentName + " compartio " + shared.name + " con " + contact.name);
   res.json({ message: message, sendResult: sendResult });
@@ -546,12 +569,13 @@ router.post("/contacts/:id/send-template", async function(req, res) {
   }
 
   var result = db.prepare(
-    "INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, ?, ?, ?, ?)"
+    "INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, status) VALUES (?, 'outgoing', ?, ?, ?, ?, ?, 'pending')"
   ).run(contact.id, contentToSave, contact.channel, agentName, mediaType, localMediaUrl);
 
   // Pausar Claudia porque un humano intervino
   pauseAiForContact(db, contact.id, agentName);
 
+  updateMessageStatus(db, result.lastInsertRowid, sendResult);
   var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
   console.log("[TEMPLATE] " + agentName + " envio '" + templateName + "' a " + contact.name + " | Exito: " + sendResult.success);
   res.json({ message: message, sendResult: sendResult, contact: db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id) });
@@ -643,9 +667,10 @@ router.post("/templates/new-contact", async function(req, res) {
     localMediaUrl = attachmentUrl;
   }
 
-  db.prepare(
-    "INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, 'whatsapp', ?, ?, ?)"
+  var insertTplNew = db.prepare(
+    "INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, status) VALUES (?, 'outgoing', ?, 'whatsapp', ?, ?, ?, 'pending')"
   ).run(contactId, contentToSave, agentName, mediaType, localMediaUrl);
+  updateMessageStatus(db, insertTplNew.lastInsertRowid, sendResult);
 
   // Pausar Claudia porque fue una interaccion humana
   pauseAiForContact(db, contactId, agentName);
@@ -750,7 +775,7 @@ router.post("/contacts/:id/messages", async function(req, res) {
   var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
   if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
   if (!content || !content.trim()) return res.status(400).json({ error: "Mensaje vacio" });
-  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, ?)").run(contact.id, content.trim(), contact.channel, agent_name || "Agente");
+  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, ?, 'pending')").run(contact.id, content.trim(), contact.channel, agent_name || "Agente");
   db.prepare("UPDATE contacts SET is_unread = 0 WHERE id = ?").run(contact.id);
 
   // Pausar Claudia: un agente humano tomo el control de la conversacion
@@ -766,6 +791,7 @@ router.post("/contacts/:id/messages", async function(req, res) {
   } else if (contact.channel === "email") {
     sendResult = await emailService.sendMessage(contact.email, "Re: Consulta", content.trim());
   }
+  updateMessageStatus(db, result.lastInsertRowid, sendResult);
   var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
   var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
   res.json({ message: message, sendResult: sendResult, contact: updatedContact });
