@@ -69,7 +69,7 @@ async function sendMessage(to, text, phoneLine) {
  * mediaType: "image" | "video" | "audio" | "document"
  * url: URL publica del archivo
  */
-async function sendMedia(to, mediaType, url, caption, phoneLine) {
+async function sendMedia(to, mediaType, url, caption, phoneLine, filename) {
   var phoneId = getPhoneId(phoneLine || 1);
   var token = process.env.WHATSAPP_TOKEN;
 
@@ -88,6 +88,9 @@ async function sendMedia(to, mediaType, url, caption, phoneLine) {
   };
 
   var mediaObj = { link: url };
+  if (waType === "document" && filename) {
+    mediaObj.filename = filename;
+  }
   if (caption && (waType === "image" || waType === "video" || waType === "document")) {
     mediaObj.caption = caption;
   }
@@ -98,15 +101,20 @@ async function sendMedia(to, mediaType, url, caption, phoneLine) {
       headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" }
     });
     var msgId = res.data.messages && res.data.messages[0] ? res.data.messages[0].id : null;
-    console.log("[WHATSAPP] Media enviado (" + waType + ") a " + to);
+    console.log("[WHATSAPP] Media enviado (" + waType + (filename ? " - " + filename : "") + ") a " + to);
     return { success: true, messageId: msgId };
   } catch (err) {
     var errData = err.response ? err.response.data : null;
-    var errorCode = errData && errData.error ? errData.error.code : null;
-    console.error("[WHATSAPP] Error enviando media:", errData || err.message);
+    var errMsg = err.message;
+    var errorCode = null;
+    if (errData && errData.error) {
+      errMsg = errData.error.message || errMsg;
+      errorCode = errData.error.code;
+    }
+    console.error("[WHATSAPP] Error enviando media (" + waType + ") a " + to + ":", JSON.stringify(errData) || err.message);
     return {
       success: false,
-      error: err.message,
+      error: errMsg,
       errorCode: errorCode,
       isOutsideWindow: errorCode === 131047 || errorCode === 131026
     };
@@ -453,3 +461,4 @@ module.exports = {
   processWebhook: processWebhook,
   downloadMedia: downloadMedia
 };
+
