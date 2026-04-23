@@ -25,13 +25,27 @@ function setup() {
     ["contacts", "lost_reason", "TEXT"],
     ["contacts", "ai_paused", "INTEGER DEFAULT 0"],
     ["contacts", "is_unread", "INTEGER DEFAULT 0"],
-    ["messages", "original_filename", "TEXT"]
+    ["messages", "original_filename", "TEXT"],
+    ["messages", "status", "TEXT DEFAULT 'pending'"],
+    ["messages", "sent_at", "TIMESTAMP"],
+    ["messages", "delivered_at", "TIMESTAMP"],
+    ["messages", "read_at", "TIMESTAMP"],
+    ["messages", "failed_reason", "TEXT"]
   ];
   for (var i = 0; i < newColumns.length; i++) {
     try {
       db.exec("ALTER TABLE " + newColumns[i][0] + " ADD COLUMN " + newColumns[i][1] + " " + newColumns[i][2]);
     } catch (e) {}
   }
+
+  // Backfill de status para mensajes existentes (idempotente)
+  try {
+    db.exec("UPDATE messages SET status='read' WHERE direction='incoming' AND status IS NULL");
+    db.exec("UPDATE messages SET status='sent', sent_at=created_at WHERE direction='outgoing' AND status IS NULL");
+    db.exec("UPDATE messages SET status='read' WHERE direction='system' AND status IS NULL");
+    db.exec("UPDATE messages SET status='sent' WHERE status IS NULL");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_messages_channel_msg_id ON messages(channel_message_id)");
+  } catch (e) {}
 
   // Migracion: permitir direction='system' en la tabla messages
   // SQLite no permite modificar CHECK constraints con ALTER TABLE, asi que hay que recrear la tabla.
