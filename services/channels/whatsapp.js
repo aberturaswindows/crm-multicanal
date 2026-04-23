@@ -358,8 +358,20 @@ function processWebhook(body) {
     var value = changes.value;
     if (!value) return null;
 
-    // Ignorar eventos de status (entregado, leido, etc.)
-    if (value.statuses) return null;
+    // Eventos de status (entregado, leido, etc.) — devolvemos un objeto especial
+    // que el handler del webhook reconoce como status event para actualizar la DB.
+    if (value.statuses && value.statuses[0]) {
+      var st = value.statuses[0];
+      return {
+        _isStatusEvent: true,
+        channel: "whatsapp",
+        channelMessageId: st.id,
+        status: st.status, // 'sent', 'delivered', 'read', 'failed'
+        timestamp: st.timestamp,
+        recipient: st.recipient_id,
+        error: st.errors && st.errors[0] ? (st.errors[0].message || st.errors[0].title || JSON.stringify(st.errors[0])) : null
+      };
+    }
 
     // Verificar que hay mensajes
     if (!value.messages || !value.messages[0]) return null;
