@@ -61,7 +61,8 @@ router.get("/media/:filename", function(req, res) {
     var ext = path.extname(filename).toLowerCase();
     var mimeTypes = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".pdf": "application/pdf", ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xls": "application/vnd.ms-excel", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".txt": "text/plain", ".csv": "text/csv", ".zip": "application/zip", ".bin": "application/octet-stream" };
     res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
-    res.setHeader("Content-Disposition", "inline; filename=\"" + filename + "\"");
+    var displayName = req.query.dl ? decodeURIComponent(req.query.dl).replace(/[^a-zA-Z0-9._\- ]/g, "_") : filename;
+    res.setHeader("Content-Disposition", "inline; filename=\"" + displayName + "\"");
     res.sendFile(filepath);
   } else {
     // Debug: loggear que archivo se pidio y que hay en disco (limitado a 10 archivos)
@@ -98,8 +99,9 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
   var agentName = req.body.agent_name || "Agente";
   var caption = req.body.caption || "";
   var msgContent = caption ? caption : contentLabel;
+  var originalFilename = req.file.originalname || null;
 
-  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, ?, ?, ?, ?)").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl);
+  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, original_filename) VALUES (?, 'outgoing', ?, ?, ?, ?, ?, ?)").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl, originalFilename);
 
   // Pausar Claudia porque un humano esta interviniendo
   pauseAiForContact(db, contact.id, agentName);
@@ -111,12 +113,13 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
   try {
     if (contact.channel === "facebook" && process.env.FACEBOOK_PAGE_TOKEN) {
       var fbType = mediaType === "file" ? "file" : mediaType;
+      var fbUrl = publicUrl + (originalFilename ? "?dl=" + encodeURIComponent(originalFilename) : "");
       var fbRes = await axios.post("https://graph.facebook.com/v18.0/me/messages", {
         recipient: { id: contact.channel_id },
-        message: { attachment: { type: fbType, payload: { url: publicUrl, is_reusable: false } } }
+        message: { attachment: { type: fbType, payload: { url: fbUrl, is_reusable: false } } }
       }, { params: { access_token: process.env.FACEBOOK_PAGE_TOKEN } });
       sendResult = { success: true, message_id: fbRes.data.message_id };
-      console.log("[UPLOAD] Facebook attachment sent to " + contact.name + ": " + req.file.filename);
+      console.log("[UPLOAD] Facebook attachment sent to " + contact.name + ": " + (originalFilename || req.file.filename));
     } else if (contact.channel === "instagram" && process.env.INSTAGRAM_TOKEN) {
       var igToken = process.env.INSTAGRAM_TOKEN || process.env.FACEBOOK_PAGE_TOKEN;
       if (mediaType === "image") {
@@ -128,13 +131,22 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
       } else {
         sendResult = { success: true, simulated: true, note: "Instagram solo soporta imagenes como adjuntos" };
       }
-      console.log("[UPLOAD] Instagram attachment to " + contact.name + ": " + req.file.filename);
+      console.log("[UPLOAD] Instagram attachment to " + contact.name + ": " + (originalFilename || req.file.filename));
     } else if (contact.channel === "whatsapp" && process.env.WHATSAPP_TOKEN) {
-      var waResult = await whatsapp.sendMedia(contact.channel_id, mediaType, publicUrl, caption, contact.phone_line || 1);
+      var waResult = await whatsapp.sendMedia(contact.channel_id, mediaType, publicUrl, caption, contact.phone_line || 1, originalFilename);
       sendResult = waResult;
-      console.log("[UPLOAD] WhatsApp attachment sent to " + contact.name + ": " + req.file.filename);
+      if (!waResult.success) {
+        console.error("[UPLOAD] Meta rechazó el archivo para " + contact.name + " (" + contact.channel_id + "):", waResult.error, "| code:", waResult.errorCode, "| 24h:", waResult.isOutsideWindow);
+        return res.status(422).json({
+          error: waResult.isOutsideWindow
+            ? "No podés enviar archivos a este contacto porque no te escribió en las últimas 24 horas. Usá una plantilla."
+            : ("Meta rechazó el envío: " + waResult.error),
+          sendResult: waResult
+        });
+      }
+      console.log("[UPLOAD] WhatsApp archivo enviado a " + contact.name + ": " + (originalFilename || req.file.filename));
     } else {
-      console.log("[UPLOAD] " + contact.channel + " attachment saved for " + contact.name + ": " + req.file.filename + " (envio pendiente)");
+      console.log("[UPLOAD] " + contact.channel + " attachment saved for " + contact.name + ": " + (originalFilename || req.file.filename) + " (envio pendiente)");
     }
   } catch (err) {
     console.error("[UPLOAD] Error enviando por " + contact.channel + ":", err.response ? err.response.data : err.message);
@@ -142,7 +154,7 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
   }
 
   var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
-  res.json({ message: message, sendResult: sendResult, file: { filename: req.file.filename, size: req.file.size, mediaType: mediaType, url: mediaUrl } });
+  res.json({ message: message, sendResult: sendResult, file: { filename: req.file.filename, originalName: originalFilename, size: req.file.size, mediaType: mediaType, url: mediaUrl } });
 });
 
 // ============================================
