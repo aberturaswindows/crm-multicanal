@@ -29,9 +29,9 @@ var storage = multer.diskStorage({
 });
 var upload = multer({
   storage: storage,
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: function(req, file, cb) {
-    var allowed = [".jpg",".jpeg",".png",".gif",".webp",".mp4",".mov",".avi",".mp3",".ogg",".wav",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".csv",".zip",".rar"];
+    var allowed = [".jpg",".jpeg",".png",".gif",".webp",".heic",".mp4",".mov",".avi",".mp3",".ogg",".wav",".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",".txt",".csv",".zip",".rar",".dwg",".dxf",".skp",".rvt",".3ds",".ifc"];
     var ext = path.extname(file.originalname).toLowerCase();
     if (allowed.indexOf(ext) !== -1) { cb(null, true); } else { cb(new Error("Tipo de archivo no permitido: " + ext)); }
   }
@@ -59,7 +59,7 @@ router.get("/media/:filename", function(req, res) {
 
   if (fs.existsSync(filepath)) {
     var ext = path.extname(filename).toLowerCase();
-    var mimeTypes = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".pdf": "application/pdf", ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xls": "application/vnd.ms-excel", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".txt": "text/plain", ".csv": "text/csv", ".zip": "application/zip", ".bin": "application/octet-stream" };
+    var mimeTypes = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".heic": "image/heic", ".mp4": "video/mp4", ".mov": "video/quicktime", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".pdf": "application/pdf", ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xls": "application/vnd.ms-excel", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".txt": "text/plain", ".csv": "text/csv", ".zip": "application/zip", ".dwg": "application/acad", ".dxf": "application/dxf", ".skp": "application/octet-stream", ".rvt": "application/octet-stream", ".3ds": "application/octet-stream", ".ifc": "application/x-step", ".bin": "application/octet-stream" };
     res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
     var displayName = req.query.dl ? decodeURIComponent(req.query.dl).replace(/[^a-zA-Z0-9._\- ]/g, "_") : filename;
     res.setHeader("Content-Disposition", "inline; filename=\"" + displayName + "\"");
@@ -716,6 +716,25 @@ router.patch("/conversations/:id/read-status", function(req, res) {
   if (result.changes === 0) return res.status(404).json({ error: "Contacto no encontrado" });
   var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
   res.json(contact);
+});
+
+router.get("/conversations/:id/attachments", function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT id FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  var msgs = db.prepare("SELECT id, direction, content, channel, agent_name, media_type, media_url, original_filename, created_at FROM messages WHERE contact_id = ? AND media_type IS NOT NULL AND media_url IS NOT NULL ORDER BY created_at DESC").all(req.params.id);
+  var attachments = msgs.map(function(m) {
+    var ext = m.original_filename ? ("." + m.original_filename.split(".").pop()).toLowerCase() : (m.media_url ? ("." + m.media_url.split(".").pop().split("?")[0]).toLowerCase() : "");
+    var sizeBytes = null;
+    if (m.media_url) {
+      var fs2 = require("fs"); var path2 = require("path");
+      var fname = m.media_url.replace("/api/media/", "");
+      var fpath = path2.join(MEDIA_DIR, fname.split("?")[0]);
+      try { sizeBytes = fs2.statSync(fpath).size; } catch(e) {}
+    }
+    return { id: m.id, direction: m.direction, media_type: m.media_type, media_url: m.media_url, original_filename: m.original_filename, ext: ext, size_bytes: sizeBytes, created_at: m.created_at, agent_name: m.agent_name };
+  });
+  res.json(attachments);
 });
 
 router.get("/contacts/:id/messages", function(req, res) {
