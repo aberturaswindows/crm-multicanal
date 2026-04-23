@@ -101,7 +101,9 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
   var msgContent = caption ? caption : contentLabel;
   var originalFilename = req.file.originalname || null;
 
-  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, original_filename) VALUES (?, 'outgoing', ?, ?, ?, ?, ?, ?)").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl, originalFilename);
+  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, ?, ?, ?, ?)").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl);
+  // Guardar nombre original en columna separada (migración idempotente en setup.js garantiza que existe)
+  try { db.prepare("UPDATE messages SET original_filename = ? WHERE id = ?").run(originalFilename, result.lastInsertRowid); } catch(e) {}
 
   // Pausar Claudia porque un humano esta interviniendo
   pauseAiForContact(db, contact.id, agentName);
