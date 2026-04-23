@@ -22,6 +22,7 @@ if (!fs.existsSync(MEDIA_DIR)) { try { fs.mkdirSync(MEDIA_DIR, { recursive: true
 var autoReplyQueue = [];
 var autoReplyProcessing = false;
 var MIN_DELAY_BETWEEN_REPLIES_MS = 1500; // 1.5s entre cada respuesta
+var debounceTimers = {}; // contactId -> setTimeout handle; espera 10s de silencio antes de disparar auto-reply
 
 async function processAutoReplyQueue() {
   if (autoReplyProcessing) return;
@@ -187,22 +188,56 @@ async function handleAutoReply(contact, channel) {
       if (result.stageChange === "datos_completos") {
         console.log("[AUTO-REPLY] *** ATENCION: " + contact.name + " tiene todos los datos para cotizar. Armar presupuesto. ***");
 
-        // Guardar ficha resumen para cotizar
         if (result.resumen) {
-          var fichaTexto = "📋 FICHA PARA COTIZAR\n";
-          fichaTexto += "━━━━━━━━━━━━━━━━━━━━━\n";
-          fichaTexto += "👤 Nombre: " + (result.resumen.nombre || "No indicado") + "\n";
-          fichaTexto += "📞 Teléfono: " + (result.resumen.telefono || "No indicado") + "\n";
-          fichaTexto += "📍 Dirección: " + (result.resumen.direccion || "No indicada") + "\n";
-          fichaTexto += "🪟 Producto: " + (result.resumen.producto || "No indicado") + "\n";
-          fichaTexto += "📐 Plano: " + (result.resumen.plano || "No indicado") + "\n";
-          fichaTexto += "🎨 Color: " + (result.resumen.color || "No indicado") + "\n";
-          fichaTexto += "🔲 Vidrio: " + (result.resumen.vidrio || "No indicado") + "\n";
-          fichaTexto += "📏 Medidas: " + (result.resumen.medidas || "No indicadas") + "\n";
-          fichaTexto += "🔧 Instalación: " + (result.resumen.instalacion || "No indicado") + "\n";
-          fichaTexto += "━━━━━━━━━━━━━━━━━━━━━";
-          db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, fichaTexto, channel);
-          console.log("[FICHA] Resumen guardado para " + contact.name);
+          try {
+            var r = result.resumen;
+            var cotizResult = db.prepare("INSERT INTO cotizaciones_datos (contact_id, nombre, telefono, instalacion, direccion, tiene_plano, color, vidrio, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+              contact.id,
+              r.nombre || null,
+              r.telefono || null,
+              r.instalacion === "Si" ? 1 : 0,
+              r.direccion || null,
+              r.tiene_plano === "Si" ? 1 : 0,
+              r.color || null,
+              r.vidrio || null,
+              r.notas || null
+            );
+            var cotizId = cotizResult.lastInsertRowid;
+            if (Array.isArray(r.aberturas)) {
+              for (var ai = 0; ai < r.aberturas.length; ai++) {
+                var ab = r.aberturas[ai];
+                db.prepare("INSERT INTO cotizaciones_aberturas (cotizacion_datos_id, contact_id, tipo, ancho_cm, alto_cm, cantidad) VALUES (?, ?, ?, ?, ?, ?)").run(
+                  cotizId, contact.id, ab.tipo || null, ab.ancho_cm || null, ab.alto_cm || null, ab.cantidad || 1
+                );
+              }
+            }
+            var fichaTexto = "📋 FICHA PARA COTIZAR\n";
+            fichaTexto += "━━━━━━━━━━━━━━━━━━━━━\n";
+            fichaTexto += "👤 Nombre: " + (r.nombre || "No indicado") + "\n";
+            fichaTexto += "📞 Teléfono: " + (r.telefono || "No indicado") + "\n";
+            fichaTexto += "🔧 Instalación: " + (r.instalacion || "No indicado") + "\n";
+            fichaTexto += "📍 Dirección: " + (r.direccion || "No indicada") + "\n";
+            fichaTexto += "📐 Plano: " + (r.tiene_plano || "No indicado") + "\n";
+            fichaTexto += "🎨 Color: " + (r.color || "No indicado") + "\n";
+            fichaTexto += "🔲 Vidrio: " + (r.vidrio || "No indicado") + "\n";
+            if (Array.isArray(r.aberturas) && r.aberturas.length > 0) {
+              fichaTexto += "🪟 Aberturas:\n";
+              for (var fi = 0; fi < r.aberturas.length; fi++) {
+                var fab = r.aberturas[fi];
+                fichaTexto += "   • " + (fab.tipo || "Abertura") + ": " + (fab.ancho_cm || "?") + " x " + (fab.alto_cm || "?") + " cm";
+                if (fab.cantidad > 1) fichaTexto += " (x" + fab.cantidad + ")";
+                fichaTexto += "\n";
+              }
+            } else {
+              fichaTexto += "🪟 Aberturas: No indicadas\n";
+            }
+            if (r.notas) fichaTexto += "📝 Notas: " + r.notas + "\n";
+            fichaTexto += "━━━━━━━━━━━━━━━━━━━━━";
+            db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, fichaTexto, channel);
+            console.log("[FICHA] Guardada para " + contact.name + " (cotizacion #" + cotizId + ", " + (Array.isArray(r.aberturas) ? r.aberturas.length : 0) + " aberturas)");
+          } catch (fichaErr) {
+            console.error("[FICHA] Error guardando ficha:", fichaErr.message);
+          }
         }
       }
     }
@@ -275,8 +310,20 @@ async function handleIncomingMessage(normalized) {
     console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + (normalized.text || "").substring(0, 50) + (normalized.mediaType ? " [" + normalized.mediaType + (normalized._transcribed ? " transcripto" : "") + "]" : "") + " -> " + classification.department + " (" + classification.confidence + ") | Etapa: " + (contact.conversation_stage || "consulta") + (contact.ai_paused ? " | IA PAUSADA" : ""));
 
     if (isAutoReplyEnabled(normalized.channel)) {
-      var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
-      enqueueAutoReply(updatedContact, normalized.channel);
+      var cId = contact.id;
+      var cChannel = normalized.channel;
+      if (debounceTimers[cId]) {
+        clearTimeout(debounceTimers[cId]);
+        console.log("[DEBOUNCE] Timer reiniciado para contacto " + cId);
+      }
+      debounceTimers[cId] = setTimeout(function() {
+        delete debounceTimers[cId];
+        var freshDb = getDb();
+        var freshContact = freshDb.prepare("SELECT * FROM contacts WHERE id = ?").get(cId);
+        if (freshContact && !freshContact.ai_paused) {
+          enqueueAutoReply(freshContact, cChannel);
+        }
+      }, 10000);
     }
 
     return { contact: contact, classification: classification };
