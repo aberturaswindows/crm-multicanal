@@ -118,6 +118,10 @@ var ICONS={
   RefreshCw:"M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16",
   LogOut:"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
   Key:"M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4",
+  Download:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
+  ExternalLink:"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3",
+  MailOpen:"M22 13H2V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v7zM22 13l-10 7-10-7",
+  FolderOpen:"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
 };
 function Icon(props){
   var name=props.name,size=props.size||16,color=props.color||T.t3,style=props.style||{};
@@ -187,16 +191,104 @@ function AudioPlayer(props){
   );
 }
 
+/* ── FILE ATTACHMENT HELPERS ─────────────────────── */
+function formatFileSize(bytes){
+  if(!bytes||bytes<=0)return"";
+  if(bytes<1024)return bytes+" B";
+  if(bytes<1048576)return Math.round(bytes/1024)+" KB";
+  return(bytes/1048576).toFixed(1)+" MB";
+}
+function getFileKind(filename){
+  if(!filename)return{kind:"generic",label:"Archivo",color:T.t3,hint:null};
+  var ext=filename.split(".").pop().toLowerCase();
+  if(ext==="dwg"||ext==="dxf")return{kind:"cad",label:"AutoCAD "+ext.toUpperCase(),color:T.accent,hint:"Abrí con AutoCAD o un visor DWG.",compat:"Compatible con AutoCAD 2018 o posterior"};
+  if(ext==="skp")return{kind:"3d",label:"SketchUp (.skp)",color:T.neutral,hint:"Abrí con SketchUp."};
+  if(ext==="rvt")return{kind:"3d",label:"Revit (.rvt)",color:T.neutral,hint:"Abrí con Autodesk Revit."};
+  if(ext==="3ds")return{kind:"3d",label:"3D Studio Max (.3ds)",color:T.neutral,hint:"Abrí con 3ds Max o Blender."};
+  if(ext==="ifc")return{kind:"3d",label:"BIM/IFC (.ifc)",color:T.neutral,hint:"Abrí con un visor IFC."};
+  if(ext==="pdf")return{kind:"pdf",label:"PDF",color:"#C0392B"};
+  if(ext==="heic")return{kind:"heic",label:"Imagen HEIC",color:T.t3,hint:"Descargá para ver en tu dispositivo."};
+  if(ext==="doc"||ext==="docx")return{kind:"doc",label:"Word",color:T.blue};
+  if(ext==="xls"||ext==="xlsx")return{kind:"doc",label:"Excel",color:T.green};
+  if(ext==="ppt"||ext==="pptx")return{kind:"doc",label:"PowerPoint",color:T.amber};
+  if(ext==="zip"||ext==="rar")return{kind:"archive",label:"Archivo comprimido",color:T.t3};
+  return{kind:"generic",label:"Archivo",color:T.t3,hint:null};
+}
+var DWG_INCOMPATIBLE_REPLY="Hola! No pudimos abrir el archivo de AutoCAD que nos enviaste. ¿Podrías volver a exportarlo en una versión más antigua?\nDesde AutoCAD: Archivo → Guardar como → Tipo de archivo: AutoCAD 2018 Drawing (.dwg) o anterior. ¡Gracias! 🙏";
+
+function AttachmentBubble(props){
+  var m=props.m,onQuickReply=props.onQuickReply;
+  var fName=m.original_filename
+    ||(m.content&&m.content.match(/^\[Archivo:\s*(.+?)\s*\]$/)?m.content.match(/^\[Archivo:\s*(.+?)\s*\]$/)[1]:null)
+    ||(m.media_url?m.media_url.split("/").pop().split("?")[0]:"Archivo");
+  var info=getFileKind(fName);
+  var dlUrl=m.media_url+(fName?"?dl="+encodeURIComponent(fName):"");
+  var c=info.color;
+  var cardSt={borderRadius:10,border:"1px solid "+c+"33",background:c+"0D",padding:"12px 14px",minWidth:200,maxWidth:280};
+  /* Icon per kind */
+  var sw="1.6",lr="round";
+  var iconEl;
+  if(info.kind==="cad"){
+    iconEl=React.createElement("svg",{width:26,height:26,viewBox:"0 0 24 24",fill:"none",stroke:c,strokeWidth:sw,strokeLinecap:lr,strokeLinejoin:lr},
+      React.createElement("rect",{x:"3",y:"3",width:"18",height:"18",rx:"2"}),
+      React.createElement("path",{d:"M3 9h18M9 21V9M3 15h6"}));
+  }else if(info.kind==="3d"){
+    iconEl=React.createElement("svg",{width:26,height:26,viewBox:"0 0 24 24",fill:"none",stroke:c,strokeWidth:sw,strokeLinecap:lr,strokeLinejoin:lr},
+      React.createElement("path",{d:"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"}),
+      React.createElement("polyline",{points:"3.27 6.96 12 12.01 20.73 6.96"}),
+      React.createElement("line",{x1:"12",y1:"22.08",x2:"12",y2:"12"}));
+  }else if(info.kind==="pdf"){
+    iconEl=React.createElement("svg",{width:26,height:26,viewBox:"0 0 24 24",fill:"none",stroke:c,strokeWidth:sw,strokeLinecap:lr,strokeLinejoin:lr},
+      React.createElement("path",{d:"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"}),
+      React.createElement("path",{d:"M9 13h1a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9v-3zM6 13v3M8 13v3M13 13h3M13 16h3"}));
+  }else if(info.kind==="heic"){
+    iconEl=React.createElement("svg",{width:26,height:26,viewBox:"0 0 24 24",fill:"none",stroke:c,strokeWidth:sw,strokeLinecap:lr,strokeLinejoin:lr},
+      React.createElement("rect",{x:"3",y:"3",width:"18",height:"18",rx:"2"}),
+      React.createElement("circle",{cx:"8.5",cy:"8.5",r:"1.5"}),
+      React.createElement("polyline",{points:"21 15 16 10 5 21"}));
+  }else{
+    iconEl=React.createElement("svg",{width:26,height:26,viewBox:"0 0 24 24",fill:"none",stroke:c,strokeWidth:sw,strokeLinecap:lr,strokeLinejoin:lr},
+      React.createElement("path",{d:"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"}));
+  }
+  return React.createElement("div",{style:cardSt},
+    React.createElement("div",{style:{display:"flex",gap:10,alignItems:"flex-start",marginBottom:8}},
+      iconEl,
+      React.createElement("div",{style:{flex:1,minWidth:0}},
+        React.createElement("div",{style:{fontSize:12,fontWeight:700,color:T.t1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},fName),
+        React.createElement("div",{style:{fontSize:11,color:c,fontWeight:600,marginTop:1}},info.label))),
+    info.kind==="pdf"&&React.createElement("div",{style:{marginBottom:8,borderRadius:6,overflow:"hidden",background:T.bg,border:"1px solid "+T.border}},
+      React.createElement("embed",{src:m.media_url+"#toolbar=0&navpanes=0",type:"application/pdf",width:"100%",height:"140px",style:{display:"block"}})),
+    (info.kind==="heic"||info.kind==="3d")&&info.hint&&React.createElement("div",{style:{fontSize:11,color:T.t4,marginBottom:8,fontStyle:"italic"}},
+      info.kind==="heic"?"Vista previa no disponible — "+info.hint:info.hint),
+    info.kind==="cad"&&React.createElement(React.Fragment,null,
+      React.createElement("div",{style:{fontSize:11,color:T.t4,marginBottom:2}},info.hint),
+      React.createElement("div",{style:{fontSize:10,color:T.t4,marginBottom:8}},info.compat)),
+    React.createElement("div",{style:{display:"flex",gap:6}},
+      info.kind==="pdf"&&React.createElement("a",{href:m.media_url,target:"_blank",style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:"transparent",color:c,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}},
+        React.createElement(Icon,{name:"ExternalLink",size:11,color:c}),"Abrir"),
+      React.createElement("a",{href:dlUrl,download:fName,style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:info.kind==="cad"?c+"15":"transparent",color:c,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}},
+        React.createElement(Icon,{name:"Download",size:11,color:c}),"Descargar")),
+    info.kind==="cad"&&onQuickReply&&React.createElement("button",{
+      onClick:function(){if(confirm("¿Enviar respuesta de incompatibilidad de AutoCAD?"))onQuickReply(DWG_INCOMPATIBLE_REPLY)},
+      style:{marginTop:8,width:"100%",padding:"5px 8px",fontSize:10,borderRadius:6,border:"1px solid "+T.border,background:"transparent",color:T.t4,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}
+    },"📋 Respuesta por incompatibilidad de versión")
+  );
+}
+
 /* ── RENDER MEDIA ────────────────────────────────── */
-function renderMedia(m){
+function renderMedia(m,onQuickReply){
   var els=[];
   var isPlaceholder=m.content&&/^\[(Imagen|Video|Audio|Archivo)/.test(m.content);
   if(m.story_url){els.push(React.createElement("div",{key:"story",style:{marginBottom:6,padding:8,background:T.neutralBg,borderRadius:8,border:"1px solid "+T.neutralBd}},React.createElement("div",{style:{fontSize:10,color:T.neutral,fontWeight:700,marginBottom:4}},"↩ Respuesta a tu historia"),React.createElement("img",{src:m.story_url,style:{maxWidth:"100%",maxHeight:140,borderRadius:6,display:"block"},onError:function(e){e.target.style.display="none"}})))}
-  if(m.media_type==="image"&&m.media_url){els.push(React.createElement("img",{key:"img",src:m.media_url,style:{maxWidth:"100%",maxHeight:240,borderRadius:8,display:"block",cursor:"pointer"},onClick:function(){window.open(m.media_url,"_blank")},onError:function(e){e.target.alt="Imagen no disponible"}}))}
+  if(m.media_type==="image"&&m.media_url){
+    var imgExt=(m.original_filename||"").split(".").pop().toLowerCase();
+    if(imgExt==="heic"){els.push(React.createElement(AttachmentBubble,{key:"file",m:m,onQuickReply:onQuickReply}))}
+    else{els.push(React.createElement("img",{key:"img",src:m.media_url,style:{maxWidth:"100%",maxHeight:240,borderRadius:8,display:"block",cursor:"pointer"},onClick:function(){window.open(m.media_url,"_blank")},onError:function(e){e.target.alt="Imagen no disponible"}}))}
+  }
   if(m.media_type==="video"&&m.media_url){els.push(React.createElement("video",{key:"vid",src:m.media_url,controls:true,style:{maxWidth:"100%",maxHeight:240,borderRadius:8,display:"block"}}))}
   if(m.media_type==="audio"&&m.media_url){els.push(React.createElement(AudioPlayer,{key:"aud",m:m,isOut:m.direction==="outgoing"}))}
-  if(m.media_type==="file"&&m.media_url){var fName=m.original_filename||(m.content&&m.content.match(/^\[Archivo:\s*(.+?)\s*\]$/)?m.content.match(/^\[Archivo:\s*(.+?)\s*\]$/)[1]:null)||(m.media_url.split("/").pop()||"Archivo");els.push(React.createElement("a",{key:"file",href:m.media_url,target:"_blank",download:fName,style:{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 12px",background:T.hover,borderRadius:8,color:T.accent,textDecoration:"none",fontSize:12,fontWeight:600,border:"1px solid "+T.border}},React.createElement(Icon,{name:"Paperclip",size:14,color:T.accent}),fName))}
-  if(m.content&&!isPlaceholder){els.push(React.createElement("span",{key:"txt",style:{lineHeight:1.55}},m.content))}
+  if(m.media_type==="file"&&m.media_url){els.push(React.createElement(AttachmentBubble,{key:"file",m:m,onQuickReply:onQuickReply}))}
+  if(m.content&&!isPlaceholder&&m.media_type!=="file"){els.push(React.createElement("span",{key:"txt",style:{lineHeight:1.55}},m.content))}
   return els;
 }
 
@@ -321,6 +413,10 @@ function App(){
   var _scp=useState(false);var showContactPicker=_scp[0];var setShowContactPicker=_scp[1];
   var _srf=useState(false);var showReminderForm=_srf[0];var setShowReminderForm=_srf[1];
   var _upl=useState(false);var uploading=_upl[0];var setUploading=_upl[1];
+  var _sfp=useState(false);var showFilesPanel=_sfp[0];var setShowFilesPanel=_sfp[1];
+  var _fpd=useState([]);var filesData=_fpd[0];var setFilesData=_fpd[1];
+  var _fps=useState("");var filesPanelSearch=_fps[0];var setFilesPanelSearch=_fps[1];
+  var _fpl=useState(false);var filesPanelLoading=_fpl[0];var setFilesPanelLoading=_fpl[1];
   var _cps=useState("");var contactPickerSearch=_cps[0];var setContactPickerSearch=_cps[1];
   var _rnd=useState("");var reminderDate=_rnd[0];var setReminderDate=_rnd[1];
   var _rnt=useState("");var reminderTime=_rnt[0];var setReminderTime=_rnt[1];
@@ -467,8 +563,16 @@ function App(){
   var pauseAi=async function(){if(!selected)return;try{var res=await fetch(API+"/contacts/"+selected.id+"/pause-ai",{method:"POST"});var updated=await res.json();setSelected(updated);loadContacts()}catch(err){alert("Error al pausar Claudia")}};
   var regenerateFicha=async function(){if(!selected)return;if(!confirm("¿Generar ficha con los datos del cliente?"))return;try{var res=await fetch(API+"/contacts/"+selected.id+"/regenerate-ficha",{method:"POST"});var data=await res.json();if(res.ok){loadMessages(selected.id)}else{alert(data.error||"Error")}}catch(err){alert("Error de conexión")}};
   var updateContact=async function(id,updates){try{var res=await fetch(API+"/contacts/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(updates)});var updated=await res.json();setSelected(updated);loadContacts();setShowReassign(false)}catch(err){console.error(err)}};
+  var loadFilesPanel=async function(){
+    if(!selected)return;
+    setShowFilesPanel(true);setFilesPanelLoading(true);setFilesPanelSearch("");
+    try{var r=await fetch(API+"/conversations/"+selected.id+"/attachments");var d=await r.json();setFilesData(Array.isArray(d)?d:[]);}
+    catch(e){setFilesData([])}
+    setFilesPanelLoading(false);
+  };
   var selectContact=function(c){
     selectedRef.current=c;
+    setShowFilesPanel(false);setFilesData([]);
     if(c.is_unread){
       setContacts(function(prev){return prev.map(function(x){return x.id===c.id?Object.assign({},x,{is_unread:0}):x})});
       fetch(API+"/conversations/"+c.id+"/read-status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({isUnread:false})}).catch(function(){
@@ -527,6 +631,7 @@ function App(){
 
   /* ── DERIVED ─────────────────────────────────── */
   var totalUnread=contacts.filter(function(c){return c.is_unread}).length;
+  var attachmentCount=messages.filter(function(m){return m.media_url&&m.media_type}).length;
   var ch=selected?CHANNELS[selected.channel]:null;
   var dept=selected?DEPARTMENTS[selected.department]:null;
   var displayContacts=contacts.filter(function(c){
@@ -656,6 +761,10 @@ function App(){
               selected.channel==="whatsapp"&&React.createElement("button",{onClick:openTemplateModalExisting,
                 style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid #25D36633",background:"#25D36608",color:"#25D366",cursor:"pointer",fontFamily:"inherit"}},
                 "📋 Plantilla"),
+              React.createElement("button",{onClick:function(){showFilesPanel?setShowFilesPanel(false):loadFilesPanel()},title:"Ver archivos adjuntos",
+                style:{fontSize:11,fontWeight:600,padding:"6px 10px",borderRadius:8,border:"1px solid "+(showFilesPanel?T.accent+"55":T.border),background:showFilesPanel?T.accentBg:"transparent",color:showFilesPanel?T.accent:T.t3,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}},
+                React.createElement(Icon,{name:"Paperclip",size:13,color:showFilesPanel?T.accent:T.t3}),
+                attachmentCount>0?attachmentCount:""),
               React.createElement("button",{onClick:handleMarkAsUnread,title:"Marcar como no leído",
                 style:{fontSize:11,fontWeight:600,padding:"6px 10px",borderRadius:8,border:"1px solid "+T.accent+"44",background:T.accentBg,color:T.accent,cursor:"pointer",fontFamily:"inherit"}},
                 React.createElement(Icon,{name:"MailOpen",size:14})),
@@ -699,7 +808,7 @@ function App(){
                   background:isOut?(isAi?T.neutralBg:T.accentBg):T.card,
                   color:T.t2,fontSize:13.5,lineHeight:1.55,
                   border:"1px solid "+(isOut?(isAi?T.neutralBd:T.accentBd):T.border)}},
-                  renderMedia(m)),
+                  renderMedia(m,function(text){setMsgText(text)})),
                 React.createElement("div",{style:{display:"flex",justifyContent:isOut?"flex-end":"flex-start",gap:5,padding:"2px 4px",alignItems:"center"}},
                   React.createElement("span",{style:{fontSize:10,color:T.t4}},formatTime(m.created_at)),
                   isOut&&m.agent_name&&!isAi&&React.createElement("span",{style:{fontSize:10,color:T.accent}},"· "+m.agent_name))
@@ -723,8 +832,8 @@ function App(){
           ),
           /* Input area */
           React.createElement("div",{style:{padding:"10px 14px 12px",background:T.card,borderTop:"1px solid "+T.border,flexShrink:0}},
-            React.createElement("input",{ref:fileInputRef,type:"file",accept:".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleFileUpload(e.target.files[0]);e.target.value=""}}),
-            React.createElement("input",{ref:mediaInputRef,type:"file",accept:"image/*,video/*",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleFileUpload(e.target.files[0]);e.target.value=""}}),
+            React.createElement("input",{ref:fileInputRef,type:"file",accept:".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.dwg,.dxf,.skp,.rvt,.3ds,.ifc,.heic",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleFileUpload(e.target.files[0]);e.target.value=""}}),
+            React.createElement("input",{ref:mediaInputRef,type:"file",accept:"image/*,video/*,.heic",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleFileUpload(e.target.files[0]);e.target.value=""}}),
             /* Clip menu */
             showClipMenu&&React.createElement("div",{style:{marginBottom:8,padding:8,background:T.card,border:"1px solid "+T.border,borderRadius:10,display:"flex",gap:6,flexWrap:"wrap",animation:"slideIn .2s ease"}},
               [["Paperclip","Documento",function(){setShowClipMenu(false);fileInputRef.current&&fileInputRef.current.click()}],
@@ -774,8 +883,61 @@ function App(){
         )
       ),
 
-      /* RIGHT: Client panel */
+      /* RIGHT: Client panel / Files panel */
       React.createElement("div",{style:{width:268,flexShrink:0,background:T.card,borderLeft:"1px solid "+T.border,display:"flex",flexDirection:"column",overflow:"hidden"}},
+        showFilesPanel
+          ? React.createElement(React.Fragment,null,
+              /* Files panel header */
+              React.createElement("div",{style:{padding:"10px 14px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",gap:8,flexShrink:0}},
+                React.createElement(Icon,{name:"Paperclip",size:14,color:T.accent}),
+                React.createElement("span",{style:{fontSize:13,fontWeight:700,color:T.t1,flex:1}},"Archivos "+(filesData.length>0?"("+filesData.length+")":"")),
+                React.createElement("button",{onClick:function(){setShowFilesPanel(false)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex",padding:2}},React.createElement(Icon,{name:"X",size:14}))),
+              /* Search */
+              React.createElement("div",{style:{padding:"8px 10px",borderBottom:"1px solid "+T.border,flexShrink:0}},
+                React.createElement("input",{value:filesPanelSearch,onChange:function(e){setFilesPanelSearch(e.target.value)},placeholder:"Buscar archivos…",style:{width:"100%",padding:"6px 10px",borderRadius:7,border:"1px solid "+T.border,fontSize:12,fontFamily:"inherit",outline:"none",background:T.bg,color:T.t1}})),
+              /* Files list */
+              React.createElement("div",{style:{flex:1,overflowY:"auto",padding:"8px 0"}},
+                filesPanelLoading
+                  ? React.createElement("div",{style:{padding:24,textAlign:"center",color:T.t4,fontSize:12}},"Cargando archivos…")
+                  : filesData.length===0
+                    ? React.createElement("div",{style:{padding:24,textAlign:"center",color:T.t4,fontSize:12}},React.createElement(Icon,{name:"Paperclip",size:24,color:T.border,style:{display:"block",margin:"0 auto 8px"}}),selected?"Sin archivos adjuntos":"")
+                    : (function(){
+                        var groups={cad:[],pdf:[],image:[],doc:[],other:[]};
+                        var search=filesPanelSearch.toLowerCase();
+                        filesData.filter(function(f){return!search||(f.original_filename||"").toLowerCase().indexOf(search)!==-1}).forEach(function(f){
+                          var ext=(f.original_filename||f.ext||"").split(".").pop().toLowerCase();
+                          var g="other";
+                          if(ext==="dwg"||ext==="dxf"||ext==="skp"||ext==="rvt"||ext==="3ds"||ext==="ifc")g="cad";
+                          else if(ext==="pdf"||ext==="doc"||ext==="docx"||ext==="xls"||ext==="xlsx"||ext==="ppt"||ext==="pptx"||ext==="txt"||ext==="csv")g="pdf";
+                          else if(f.media_type==="image")g="image";
+                          if(groups[g])groups[g].push(f);else groups.other.push(f);
+                        });
+                        var groupLabels={cad:"Planos y 3D",pdf:"Documentos",image:"Imágenes",other:"Otros"};
+                        var groupIcons={cad:"FileText",pdf:"FileText",image:"Image",other:"Paperclip"};
+                        return Object.keys(groups).filter(function(g){return groups[g].length>0}).map(function(g){
+                          return React.createElement("div",{key:g},
+                            React.createElement("div",{style:{padding:"6px 14px 4px",fontSize:10,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.6}},groupLabels[g]+" ("+groups[g].length+")"),
+                            groups[g].map(function(f){
+                              var fN=f.original_filename||(f.media_url?f.media_url.split("/").pop():"Archivo");
+                              var fInfo=getFileKind(fN);
+                              var dlUrl=f.media_url+(fN?"?dl="+encodeURIComponent(fN):"");
+                              return React.createElement("div",{key:f.id,style:{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",borderBottom:"1px solid "+T.border+"33"}},
+                                React.createElement("div",{style:{width:28,height:28,borderRadius:6,background:fInfo.color+"15",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
+                                  React.createElement(Icon,{name:"FileText",size:13,color:fInfo.color})),
+                                React.createElement("div",{style:{flex:1,minWidth:0}},
+                                  React.createElement("div",{style:{fontSize:11,fontWeight:600,color:T.t2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},fN),
+                                  React.createElement("div",{style:{fontSize:10,color:T.t4,marginTop:1}},
+                                    f.created_at?new Date(f.created_at.replace(" ","T")+"Z").toLocaleDateString("es-AR",{day:"numeric",month:"short"}):"",
+                                    f.size_bytes?" · "+formatFileSize(f.size_bytes):"")),
+                                React.createElement("a",{href:dlUrl,download:fN,title:"Descargar",style:{color:T.t4,display:"flex",padding:4,borderRadius:4,flexShrink:0}},
+                                  React.createElement(Icon,{name:"Download",size:13,color:T.t3}))
+                              );
+                            })
+                          );
+                        });
+                      })()
+              ))
+          : React.createElement(React.Fragment,null,
         /* Tab switcher */
         React.createElement("div",{style:{display:"flex",borderBottom:"1px solid "+T.border,flexShrink:0}},
           [["info","Contexto 360°"],["agents","Equipo"]].map(function(t){return React.createElement("button",{key:t[0],onClick:function(){setTab(t[0])},
@@ -844,7 +1006,7 @@ function App(){
               React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:T.green}}))})
           )
         )
-      )
+      ))
     ),
 
     /* ── QUOTES VIEW ─────────────────────────── */
