@@ -130,6 +130,35 @@ function setup() {
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_created_by ON quotes(created_by)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_quotes_followup ON quotes(followup_date)");
+  db.exec("CREATE TABLE IF NOT EXISTS cotizaciones_datos (" +
+    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+    "contact_id INTEGER NOT NULL, " +
+    "nombre TEXT, " +
+    "telefono TEXT, " +
+    "instalacion INTEGER DEFAULT 0, " +
+    "direccion TEXT, " +
+    "tiene_plano INTEGER DEFAULT 0, " +
+    "color TEXT, " +
+    "vidrio TEXT, " +
+    "notas TEXT, " +
+    "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+    "FOREIGN KEY (contact_id) REFERENCES contacts(id)" +
+  ")");
+  db.exec("CREATE TABLE IF NOT EXISTS cotizaciones_aberturas (" +
+    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+    "cotizacion_datos_id INTEGER NOT NULL, " +
+    "contact_id INTEGER NOT NULL, " +
+    "tipo TEXT, " +
+    "ancho_cm INTEGER, " +
+    "alto_cm INTEGER, " +
+    "cantidad INTEGER DEFAULT 1, " +
+    "descripcion TEXT, " +
+    "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+    "FOREIGN KEY (cotizacion_datos_id) REFERENCES cotizaciones_datos(id), " +
+    "FOREIGN KEY (contact_id) REFERENCES contacts(id)" +
+  ")");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_cotizaciones_datos_contact ON cotizaciones_datos(contact_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_cotizaciones_aberturas_datos ON cotizaciones_aberturas(cotizacion_datos_id)");
   db.exec("CREATE TABLE IF NOT EXISTS reminders (" +
     "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
     "contact_id INTEGER NOT NULL, " +
