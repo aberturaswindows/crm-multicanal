@@ -284,6 +284,9 @@ function App(){
   var _snd=useState(true);var soundOn=_snd[0];var setSoundOn=_snd[1];
   var _tst=useState(null);var toastContact=_tst[0];var setToastContact=_tst[1];
   var prevContactCount=useRef(0);
+  var prevContactsRef=useRef([]);
+  var selectedRef=useRef(null);
+  var soundOnRef=useRef(true);
   /* Quotes state */
   var _ql=useState([]);var quotes=_ql[0];var setQuotes=_ql[1];
   var _qst=useState(null);var quoteStats=_qst[0];var setQuoteStats=_qst[1];
@@ -323,18 +326,28 @@ function App(){
     if(!user)return;
     var url=API+"/contacts?";
     if(filterCh!=="all"&&filterCh!=="unread")url+="channel="+filterCh+"&";
-    if(filterDept!=="all"){url+="department="+filterDept+"&"}
+    if(user.role==="agent"&&user.department){url+="department="+user.department+"&"}
     else if(filterDept!=="all"){url+="department="+filterDept+"&"}
     fetch(url).then(function(r){return r.json()}).then(function(newContacts){
       if(prevContactCount.current>0){
-        var oldUnread=contacts.reduce(function(a,c){return a+c.unread},0);
-        var newUnread=newContacts.reduce(function(a,c){return a+c.unread},0);
-        if(newUnread>oldUnread){
-          var newMsg=newContacts.find(function(nc){var oc=contacts.find(function(c){return c.id===nc.id});return oc&&nc.unread>oc.unread});
-          if(newMsg&&(!selected||newMsg.id!==selected.id)){setToastContact(newMsg);if(soundOn)playNotifSound();setTimeout(function(){setToastContact(null)},5000)}
+        var newlyUnread=newContacts.find(function(nc){
+          var oc=prevContactsRef.current.find(function(c){return c.id===nc.id});
+          return oc&&!oc.is_unread&&nc.is_unread;
+        });
+        if(newlyUnread&&(!selectedRef.current||newlyUnread.id!==selectedRef.current.id)){
+          setToastContact(newlyUnread);if(soundOnRef.current)playNotifSound();setTimeout(function(){setToastContact(null)},5000);
+        }
+        if(selectedRef.current){
+          var activeInNew=newContacts.find(function(nc){return nc.id===selectedRef.current.id});
+          if(activeInNew&&activeInNew.is_unread){
+            fetch(API+"/conversations/"+selectedRef.current.id+"/read-status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({isUnread:false})}).catch(function(){});
+            newContacts=newContacts.map(function(nc){return nc.id===selectedRef.current.id?Object.assign({},nc,{is_unread:0}):nc});
+          }
         }
       }
-      prevContactCount.current=newContacts.length;setContacts(newContacts);
+      prevContactCount.current=newContacts.length;
+      prevContactsRef.current=newContacts;
+      setContacts(newContacts);
     }).catch(function(){});
   };
   var loadMessages=function(contactId){
@@ -383,7 +396,7 @@ function App(){
   },[view]);
   useEffect(function(){if(!user||view!=="quotes")return;loadQuotes()},[qFilterStatus,qFilterUser]);
   useEffect(function(){
-    var totalUnread=contacts.reduce(function(a,c){return a+c.unread},0);
+    var totalUnread=contacts.filter(function(c){return c.is_unread}).length;
     document.title=totalUnread>0?"("+totalUnread+") NexoCRM":"NexoCRM - CRM Multicanal con IA";
   },[contacts]);
 
@@ -408,7 +421,23 @@ function App(){
   var pauseAi=async function(){if(!selected)return;try{var res=await fetch(API+"/contacts/"+selected.id+"/pause-ai",{method:"POST"});var updated=await res.json();setSelected(updated);loadContacts()}catch(err){alert("Error al pausar Claudia")}};
   var regenerateFicha=async function(){if(!selected)return;if(!confirm("¿Generar ficha con los datos del cliente?"))return;try{var res=await fetch(API+"/contacts/"+selected.id+"/regenerate-ficha",{method:"POST"});var data=await res.json();if(res.ok){loadMessages(selected.id)}else{alert(data.error||"Error")}}catch(err){alert("Error de conexión")}};
   var updateContact=async function(id,updates){try{var res=await fetch(API+"/contacts/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(updates)});var updated=await res.json();setSelected(updated);loadContacts();setShowReassign(false)}catch(err){console.error(err)}};
-  var selectContact=function(c){setSelected(c);setShowReassign(false);setShowLostReasons(false);setShowClipMenu(false);setShowContactPicker(false);setShowReminderForm(false);setTab("info")};
+  var selectContact=function(c){
+    selectedRef.current=c;
+    if(c.is_unread){
+      setContacts(function(prev){return prev.map(function(x){return x.id===c.id?Object.assign({},x,{is_unread:0}):x})});
+      fetch(API+"/conversations/"+c.id+"/read-status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({isUnread:false})}).catch(function(){
+        setContacts(function(prev){return prev.map(function(x){return x.id===c.id?Object.assign({},x,{is_unread:1}):x})});
+      });
+    }
+    setSelected(c);setShowReassign(false);setShowLostReasons(false);setShowClipMenu(false);setShowContactPicker(false);setShowReminderForm(false);setTab("info");
+  };
+  var handleMarkAsUnread=function(){
+    if(!selected)return;
+    setContacts(function(prev){return prev.map(function(x){return x.id===selected.id?Object.assign({},x,{is_unread:1}):x})});
+    fetch(API+"/conversations/"+selected.id+"/read-status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({isUnread:true})}).catch(function(){
+      setContacts(function(prev){return prev.map(function(x){return x.id===selected.id?Object.assign({},x,{is_unread:0}):x})});
+    });
+  };
   var changeStage=async function(stage,lostReason){try{var body={stage:stage};if(lostReason)body.lost_reason=lostReason;var res=await fetch(API+"/contacts/"+selected.id+"/stage",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});var updated=await res.json();setSelected(updated);loadContacts();setShowLostReasons(false)}catch(err){console.error(err)}};
   var handleFileUpload=async function(file){if(!file||!selected)return;setUploading(true);setShowClipMenu(false);try{var formData=new FormData();formData.append("file",file);formData.append("agent_name",user.name);var res=await fetch(API+"/contacts/"+selected.id+"/upload",{method:"POST",body:formData});var data=await res.json();if(res.ok){loadMessages(selected.id);var updatedC=await fetch(API+"/contacts/"+selected.id).then(function(r){return r.json()});setSelected(updatedC);loadContacts()}else{alert(data.error||"Error al subir")}}catch(e){alert("Error de conexión")}setUploading(false)};
   var handleShareContact=async function(sharedId){if(!selected)return;setShowContactPicker(false);setShowClipMenu(false);try{var res=await fetch(API+"/contacts/"+selected.id+"/share-contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shared_contact_id:sharedId,agent_name:user.name})});if(res.ok){loadMessages(selected.id);loadContacts()}}catch(e){alert("Error de conexión")}};
@@ -451,11 +480,11 @@ function App(){
   var deleteQuote=async function(id){if(!confirm("¿Eliminar presupuesto?"))return;try{await fetch(API+"/quotes/"+id,{method:"DELETE"});loadQuotes();loadQuoteStats()}catch(e){alert("Error")}};
 
   /* ── DERIVED ─────────────────────────────────── */
-  var totalUnread=contacts.reduce(function(a,c){return a+(c.unread||0)},0);
+  var totalUnread=contacts.filter(function(c){return c.is_unread}).length;
   var ch=selected?CHANNELS[selected.channel]:null;
   var dept=selected?DEPARTMENTS[selected.department]:null;
   var displayContacts=contacts.filter(function(c){
-    if(filterCh==="unread"&&!c.unread)return false;
+    if(filterCh==="unread"&&!c.is_unread)return false;
     if(searchText){var s=searchText.toLowerCase();if(c.name.toLowerCase().indexOf(s)===-1&&(!c.last_message||c.last_message.toLowerCase().indexOf(s)===-1))return false}
     return true;
   });
@@ -496,7 +525,7 @@ function App(){
       }),
       React.createElement("div",{style:{flex:1}}),
       /* Sound toggle */
-      React.createElement("button",{onClick:function(){setSoundOn(!soundOn)},title:soundOn?"Silenciar":"Activar sonido",
+      React.createElement("button",{onClick:function(){var ns=!soundOn;setSoundOn(ns);soundOnRef.current=ns;},title:soundOn?"Silenciar":"Activar sonido",
         style:{width:40,height:40,borderRadius:10,border:"none",cursor:"pointer",background:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}},
         React.createElement(Icon,{name:soundOn?"Volume2":"VolumeX",size:18,color:soundOn?T.t3:T.t4})),
       /* User avatar */
@@ -537,7 +566,7 @@ function App(){
         /* Contact list */
         React.createElement("div",{style:{flex:1,overflowY:"auto"}},
           displayContacts.map(function(c){
-            var chData=CHANNELS[c.channel]||{};var isSelected=selected&&selected.id===c.id;var hasUnread=c.unread>0;var deptData=DEPARTMENTS[c.department]||{};
+            var chData=CHANNELS[c.channel]||{};var isSelected=selected&&selected.id===c.id;var hasUnread=!!c.is_unread;var deptData=DEPARTMENTS[c.department]||{};
             return React.createElement("div",{key:c.id,onClick:function(){selectContact(c)},
               style:{display:"flex",gap:10,padding:"11px 12px",cursor:"pointer",alignItems:"flex-start",
                 background:isSelected?T.hover:"transparent",borderLeft:"3px solid "+(isSelected?T.accent:"transparent"),
@@ -549,7 +578,7 @@ function App(){
                   React.createElement("span",{style:{fontSize:10,color:hasUnread?T.accent:T.t4,flexShrink:0,fontWeight:hasUnread?700:400}},formatTime(c.last_message_at))),
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
                   React.createElement("span",{style:{fontSize:11.5,color:hasUnread?T.t2:T.t4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,fontWeight:hasUnread?500:400}},c.last_message||"Sin mensajes"),
-                  hasUnread&&React.createElement("span",{style:{minWidth:18,height:18,borderRadius:9,background:T.accent,color:"#0A1220",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",marginLeft:5,padding:"0 4px"}},c.unread)),
+                  hasUnread&&React.createElement("span",{style:{width:9,height:9,borderRadius:"50%",background:T.accent,flexShrink:0,marginLeft:5,boxShadow:"0 0 6px "+T.accent}})),
                 React.createElement("div",{style:{display:"flex",gap:3,flexWrap:"wrap"}},
                   React.createElement(Badge,{color:deptData.color||T.t4},deptData.label||c.department||""),
                   React.createElement(StageBadge,{stage:c.conversation_stage||"consulta"}))
@@ -579,6 +608,9 @@ function App(){
               selected.channel==="whatsapp"&&React.createElement("button",{onClick:openTemplateModalExisting,
                 style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid #25D36633",background:"#25D36608",color:"#25D366",cursor:"pointer",fontFamily:"inherit"}},
                 "📋 Plantilla"),
+              React.createElement("button",{onClick:handleMarkAsUnread,title:"Marcar como no leído",
+                style:{fontSize:11,fontWeight:600,padding:"6px 10px",borderRadius:8,border:"1px solid "+T.accent+"44",background:T.accentBg,color:T.accent,cursor:"pointer",fontFamily:"inherit"}},
+                React.createElement(Icon,{name:"MailOpen",size:14})),
               React.createElement("button",{onClick:function(){changePassword()},style:Object.assign({},btnS,{padding:"6px 10px"})},React.createElement(Icon,{name:"Key",size:14})),
               React.createElement("button",{onClick:logout,style:Object.assign({},btnS,{padding:"6px 10px",borderColor:T.red+"33",color:T.red})},React.createElement(Icon,{name:"LogOut",size:14}))
             )
