@@ -257,6 +257,7 @@ async function handleIncomingMessage(normalized) {
     }
 
     db.prepare("INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?)").run(contact.id, contentToSave, normalized.channel, normalized.messageId, normalized.mediaType || null, normalized.mediaUrl || null, normalized.storyUrl || null);
+    db.prepare("UPDATE contacts SET is_unread = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(contact.id);
 
     var textForAi = normalized.text || "";
     if (normalized.storyUrl) { textForAi = "[Respuesta a historia de Instagram] " + textForAi; }
@@ -354,3 +355,4 @@ router.post("/phone", async function(req, res) {
 });
 
 module.exports = router;
+
