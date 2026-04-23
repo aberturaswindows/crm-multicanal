@@ -55,7 +55,8 @@ function getTheme(mode){
     green:"#059669",greenBg:"rgba(5,150,105,0.10)",
     red:"#DC2626",redBg:"rgba(220,38,38,0.08)",
     amber:"#D97706",amberBg:"rgba(217,119,6,0.10)",
-    blue:"#2563EB",cyan:"#B45309"
+    blue:"#2563EB",cyan:"#B45309",
+    statusRead:"#53BDEB"
   };
   return{
     bg:"#1C1917",nav:"#0C0A09",card:"#292524",card2:"#1C1917",hover:"#3C3330",
@@ -67,7 +68,8 @@ function getTheme(mode){
     green:"#10B981",greenBg:"rgba(16,185,129,0.10)",
     red:"#F87171",redBg:"rgba(248,113,113,0.10)",
     amber:"#F59E0B",amberBg:"rgba(245,158,11,0.10)",
-    blue:"#3B82F6",cyan:"#D97706"
+    blue:"#3B82F6",cyan:"#D97706",
+    statusRead:"#53BDEB"
   };
 }
 var T=getTheme(localStorage.getItem('nexocrm-theme')||'dark');
@@ -215,6 +217,46 @@ function getFileKind(filename){
   return{kind:"generic",label:"Archivo",color:T.t3,hint:null};
 }
 var DWG_INCOMPATIBLE_REPLY="Hola! No pudimos abrir el archivo de AutoCAD que nos enviaste. ¿Podrías volver a exportarlo en una versión más antigua?\nDesde AutoCAD: Archivo → Guardar como → Tipo de archivo: AutoCAD 2018 Drawing (.dwg) o anterior. ¡Gracias! 🙏";
+
+function formatStatusTime(iso){
+  if(!iso)return"";
+  try{var d=new Date(iso);return d.toLocaleString("es-AR",{timeZone:"America/Argentina/Buenos_Aires",hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit"});}catch(e){return"";}
+}
+
+function MessageStatus(props){
+  var m=props.m||{};
+  var status=m.status||"sent";
+  var size=14;
+  var color=T.t4;
+  var tooltip="";
+  var iconEl=null;
+  var stroke=1.8;
+  if(status==="pending"){
+    tooltip="Enviando...";
+    iconEl=React.createElement("svg",{width:size,height:size,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:stroke,strokeLinecap:"round",strokeLinejoin:"round"},
+      React.createElement("circle",{cx:12,cy:12,r:9}),
+      React.createElement("polyline",{points:"12 7 12 12 15 14"}));
+  } else if(status==="sent"){
+    tooltip=m.sent_at?"Enviado a las "+formatStatusTime(m.sent_at):"Enviado";
+    iconEl=React.createElement("svg",{width:size,height:size,viewBox:"0 0 16 15",fill:"currentColor"},
+      React.createElement("path",{d:"M10.91 3.316l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.879a.32.32 0 0 1-.484.033L1.891 7.769a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.258 3.185c.143.14.361.125.484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"}));
+  } else if(status==="delivered"||status==="read"){
+    if(status==="read"){color=T.statusRead;tooltip=m.read_at?"Leído a las "+formatStatusTime(m.read_at):"Leído";}
+    else{tooltip=m.delivered_at?"Entregado a las "+formatStatusTime(m.delivered_at):"Entregado";}
+    iconEl=React.createElement("svg",{width:size+2,height:size,viewBox:"0 0 16 15",fill:"currentColor"},
+      React.createElement("path",{d:"M11.071 3.316l-.478-.372a.365.365 0 0 0-.51.063L4.732 9.879a.32.32 0 0 1-.484.033L2.055 7.769a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.258 3.185c.143.14.361.125.484-.033l6.269-8.048a.365.365 0 0 0-.063-.51zm3.743 0l-.478-.372a.365.365 0 0 0-.51.063L8.17 9.879a.32.32 0 0 1-.484.033l-.58-.564-.71.718 1.37 1.34c.143.14.361.125.484-.033l6.626-8.048a.365.365 0 0 0-.063-.51z"}));
+  } else if(status==="failed"){
+    color=T.red;
+    tooltip=m.failed_reason||"Error al enviar";
+    iconEl=React.createElement("svg",{width:size,height:size,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"},
+      React.createElement("path",{d:"M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"}),
+      React.createElement("line",{x1:12,y1:9,x2:12,y2:13}),
+      React.createElement("line",{x1:12,y1:17,x2:12.01,y2:17}));
+  } else {
+    return null;
+  }
+  return React.createElement("span",{title:tooltip,style:{display:"inline-flex",alignItems:"center",color:color,lineHeight:0,marginLeft:2}},iconEl);
+}
 
 function AttachmentBubble(props){
   var m=props.m,onQuickReply=props.onQuickReply;
@@ -811,7 +853,8 @@ function App(){
                   renderMedia(m,function(text){setMsgText(text)})),
                 React.createElement("div",{style:{display:"flex",justifyContent:isOut?"flex-end":"flex-start",gap:5,padding:"2px 4px",alignItems:"center"}},
                   React.createElement("span",{style:{fontSize:10,color:T.t4}},formatTime(m.created_at)),
-                  isOut&&m.agent_name&&!isAi&&React.createElement("span",{style:{fontSize:10,color:T.accent}},"· "+m.agent_name))
+                  isOut&&m.agent_name&&!isAi&&React.createElement("span",{style:{fontSize:10,color:T.accent}},"· "+m.agent_name),
+                  isOut&&m.channel!=="email"&&m.channel!=="telefono"&&React.createElement(MessageStatus,{m:m}))
               );
             }),
             aiLoading&&!selected.ai_paused&&React.createElement("div",{style:{alignSelf:"flex-start",marginLeft:8}},
