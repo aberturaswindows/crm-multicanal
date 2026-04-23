@@ -98,8 +98,9 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
   var mediaUrl = "/api/media/" + req.file.filename;
   var agentName = req.body.agent_name || "Agente";
   var caption = req.body.caption || "";
-  var msgContent = caption ? caption : contentLabel;
   var originalFilename = req.file.originalname || null;
+  if (mediaType === "file" && originalFilename && !caption) contentLabel = "[Archivo: " + originalFilename + "]";
+  var msgContent = caption ? caption : contentLabel;
 
   var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url) VALUES (?, 'outgoing', ?, ?, ?, ?, ?)").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl);
   // Guardar nombre original en columna separada (migración idempotente en setup.js garantiza que existe)
