@@ -377,6 +377,7 @@ function processWebhook(body) {
     var mediaType = null;
     var mediaUrl = null; // Para WA Cloud API, esto es el media ID que luego se descarga
     var needsDownload = false;
+    var docFilename = null;
 
     var msgType = msg.type;
 
@@ -405,6 +406,7 @@ function processWebhook(body) {
         text = msg.document.caption || "[Archivo: " + msg.document.filename + "]";
       }
       needsDownload = true;
+      docFilename = msg.document.filename || null;
     } else if (msgType === "sticker") {
       mediaType = "image";
       mediaUrl = msg.sticker.id;
@@ -444,6 +446,7 @@ function processWebhook(body) {
       mediaType: mediaType,
       mediaUrl: mediaUrl,
       storyUrl: null,
+      originalFilename: docFilename,
       _needsDownload: needsDownload,
       _waMediaId: needsDownload ? mediaUrl : null // Guardamos el media ID original
     };
