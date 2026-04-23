@@ -24,7 +24,8 @@ function setup() {
     ["contacts", "last_followup_at", "TEXT"],
     ["contacts", "lost_reason", "TEXT"],
     ["contacts", "ai_paused", "INTEGER DEFAULT 0"],
-    ["contacts", "is_unread", "INTEGER DEFAULT 0"]
+    ["contacts", "is_unread", "INTEGER DEFAULT 0"],
+    ["messages", "original_filename", "TEXT"]
   ];
   for (var i = 0; i < newColumns.length; i++) {
     try {
