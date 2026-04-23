@@ -153,6 +153,33 @@ async function transcribeAudio(mediaUrl) {
   }
 }
 
+function handleStatusUpdate(statusEvent) {
+  // Procesa eventos de status de WhatsApp Cloud API (sent/delivered/read/failed).
+  // Los webhooks pueden llegar fuera de orden (read antes que delivered); los guards
+  // WHERE status NOT IN (...) evitan retrocesos de estado.
+  var db = getDb();
+  try {
+    var msg = db.prepare("SELECT id, status FROM messages WHERE channel_message_id = ?").get(statusEvent.channelMessageId);
+    if (!msg) {
+      console.log("[STATUS] Mensaje no encontrado: channel_message_id=" + statusEvent.channelMessageId + " (" + statusEvent.status + ")");
+      return;
+    }
+    var ts = new Date(parseInt(statusEvent.timestamp, 10) * 1000).toISOString();
+    if (statusEvent.status === "read") {
+      db.prepare("UPDATE messages SET status='read', read_at=? WHERE id=?").run(ts, msg.id);
+    } else if (statusEvent.status === "delivered" && msg.status !== 'read') {
+      db.prepare("UPDATE messages SET status='delivered', delivered_at=? WHERE id=?").run(ts, msg.id);
+    } else if (statusEvent.status === "sent" && msg.status !== 'read' && msg.status !== 'delivered') {
+      db.prepare("UPDATE messages SET status='sent', sent_at=? WHERE id=?").run(ts, msg.id);
+    } else if (statusEvent.status === "failed") {
+      db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(statusEvent.error || 'Unknown error', msg.id);
+    }
+    console.log("[STATUS] " + statusEvent.channelMessageId + " -> " + statusEvent.status + " (msg.id=" + msg.id + ")");
+  } catch (err) {
+    console.error("[STATUS] Error:", err.message);
+  }
+}
+
 async function handleAutoReply(contact, channel) {
   try {
     var db = getDb();
@@ -242,9 +269,15 @@ async function handleAutoReply(contact, channel) {
       }
     }
 
-    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, 'Claudia')").run(contact.id, result.reply, channel);
+    var insertResult = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, 'Claudia', 'pending')").run(contact.id, result.reply, channel);
+    var msgId = insertResult.lastInsertRowid;
 
     var sendResult = await sendChannelMessage(channel, contact.channel_id, contact.phone_line, contact.email, result.reply);
+    if (sendResult.success) {
+      db.prepare("UPDATE messages SET status='sent', sent_at=CURRENT_TIMESTAMP, channel_message_id=? WHERE id=?").run(sendResult.messageId || null, msgId);
+    } else {
+      db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(sendResult.error || 'Unknown error', msgId);
+    }
     console.log("[CLAUDIA] " + channel.toUpperCase() + " -> " + contact.name + ": " + result.reply.substring(0, 60) + "... | Enviado: " + sendResult.success);
   } catch (err) {
     console.error("[AUTO-REPLY] Error:", err.message);
@@ -354,16 +387,20 @@ router.post("/meta", async function(req, res) {
       normalized = whatsapp.processWebhook(body);
     } else if (object === "instagram") {
       normalized = instagram.processWebhook(body);
-      if (normalized) {
+      if (normalized && !normalized._isStatusEvent) {
         var igName = await instagram.getUserProfile(normalized.channelId);
         if (igName) { normalized.senderName = igName; }
       }
     } else if (object === "page") {
       normalized = facebook.processWebhook(body);
-      if (normalized) {
+      if (normalized && !normalized._isStatusEvent) {
         var fbName = await facebook.getUserProfile(normalized.channelId);
         if (fbName) { normalized.senderName = fbName; }
       }
+    }
+    if (normalized && normalized._isStatusEvent) {
+      handleStatusUpdate(normalized);
+      return;
     }
     if (normalized) { await handleIncomingMessage(normalized); }
   } catch (err) {
