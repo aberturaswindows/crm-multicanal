@@ -23,7 +23,8 @@ function setup() {
     ["contacts", "followup_count", "INTEGER DEFAULT 0"],
     ["contacts", "last_followup_at", "TEXT"],
     ["contacts", "lost_reason", "TEXT"],
-    ["contacts", "ai_paused", "INTEGER DEFAULT 0"]
+    ["contacts", "ai_paused", "INTEGER DEFAULT 0"],
+    ["contacts", "is_unread", "INTEGER DEFAULT 0"]
   ];
   for (var i = 0; i < newColumns.length; i++) {
     try {
@@ -157,3 +158,4 @@ if (require.main === module) {
   setup();
 }
 module.exports = { getDb: getDb, setup: setup };
+
