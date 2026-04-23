@@ -256,7 +256,10 @@ async function handleIncomingMessage(normalized) {
       contentToSave = normalized.text;
     }
 
-    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?)").run(contact.id, contentToSave, normalized.channel, normalized.messageId, normalized.mediaType || null, normalized.mediaUrl || null, normalized.storyUrl || null);
+    var insertedMsg = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?)").run(contact.id, contentToSave, normalized.channel, normalized.messageId, normalized.mediaType || null, normalized.mediaUrl || null, normalized.storyUrl || null);
+    if (normalized.originalFilename) {
+      try { db.prepare("UPDATE messages SET original_filename = ? WHERE id = ?").run(normalized.originalFilename, insertedMsg.lastInsertRowid); } catch(e) {}
+    }
     db.prepare("UPDATE contacts SET is_unread = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(contact.id);
 
     var textForAi = normalized.text || "";
