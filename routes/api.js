@@ -694,6 +694,15 @@ router.put("/contacts/:id", function(req, res) {
   res.json(updated);
 });
 
+router.patch("/conversations/:id/read-status", function(req, res) {
+  var db = getDb();
+  var isUnread = req.body.isUnread ? 1 : 0;
+  var result = db.prepare("UPDATE contacts SET is_unread = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(isUnread, req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: "Contacto no encontrado" });
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  res.json(contact);
+});
+
 router.get("/contacts/:id/messages", function(req, res) {
   var db = getDb();
   var messages = db.prepare("SELECT * FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(req.params.id);
@@ -708,6 +717,7 @@ router.post("/contacts/:id/messages", async function(req, res) {
   if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
   if (!content || !content.trim()) return res.status(400).json({ error: "Mensaje vacio" });
   var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'outgoing', ?, ?, ?)").run(contact.id, content.trim(), contact.channel, agent_name || "Agente");
+  db.prepare("UPDATE contacts SET is_unread = 0 WHERE id = ?").run(contact.id);
 
   // Pausar Claudia: un agente humano tomo el control de la conversacion
   pauseAiForContact(db, contact.id, agent_name);
@@ -885,3 +895,4 @@ router.delete("/quotes/:id", function(req, res) {
 });
 
 module.exports = router;
+
