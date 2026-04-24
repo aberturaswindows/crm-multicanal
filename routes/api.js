@@ -769,32 +769,37 @@ router.get("/contacts/:id/messages", function(req, res) {
 });
 
 router.post("/contacts/:id/messages", async function(req, res) {
-  var db = getDb();
-  var content = req.body.content;
-  var agent_name = req.body.agent_name;
-  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
-  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
-  if (!content || !content.trim()) return res.status(400).json({ error: "Mensaje vacio" });
-  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, ?, 'pending')").run(contact.id, content.trim(), contact.channel, agent_name || "Agente");
-  db.prepare("UPDATE contacts SET is_unread = 0 WHERE id = ?").run(contact.id);
+  try {
+    var db = getDb();
+    var content = req.body.content;
+    var agent_name = req.body.agent_name;
+    var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+    if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+    if (!content || !content.trim()) return res.status(400).json({ error: "Mensaje vacio" });
+    var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, ?, 'pending')").run(contact.id, content.trim(), contact.channel, agent_name || "Agente");
+    db.prepare("UPDATE contacts SET is_unread = 0 WHERE id = ?").run(contact.id);
 
-  // Pausar Claudia: un agente humano tomo el control de la conversacion
-  pauseAiForContact(db, contact.id, agent_name);
+    // Pausar Claudia: un agente humano tomo el control de la conversacion
+    pauseAiForContact(db, contact.id, agent_name);
 
-  var sendResult = { success: true, simulated: true };
-  if (contact.channel === "whatsapp") {
-    sendResult = await whatsapp.sendMessage(contact.channel_id, content.trim(), contact.phone_line || 1);
-  } else if (contact.channel === "instagram") {
-    sendResult = await instagram.sendMessage(contact.channel_id, content.trim());
-  } else if (contact.channel === "facebook") {
-    sendResult = await facebook.sendMessage(contact.channel_id, content.trim());
-  } else if (contact.channel === "email") {
-    sendResult = await emailService.sendMessage(contact.email, "Re: Consulta", content.trim());
+    var sendResult = { success: true, simulated: true };
+    if (contact.channel === "whatsapp") {
+      sendResult = await whatsapp.sendMessage(contact.channel_id, content.trim(), contact.phone_line || 1);
+    } else if (contact.channel === "instagram") {
+      sendResult = await instagram.sendMessage(contact.channel_id, content.trim());
+    } else if (contact.channel === "facebook") {
+      sendResult = await facebook.sendMessage(contact.channel_id, content.trim());
+    } else if (contact.channel === "email") {
+      sendResult = await emailService.sendMessage(contact.email, "Re: Consulta", content.trim());
+    }
+    updateMessageStatus(db, result.lastInsertRowid, sendResult);
+    var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
+    var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
+    res.json({ message: message, sendResult: sendResult, contact: updatedContact });
+  } catch (err) {
+    console.error("[POST /contacts/:id/messages] Error:", err);
+    res.status(500).json({ error: err.message || "Error enviando mensaje" });
   }
-  updateMessageStatus(db, result.lastInsertRowid, sendResult);
-  var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
-  var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
-  res.json({ message: message, sendResult: sendResult, contact: updatedContact });
 });
 
 router.get("/contacts/:id/suggestion", async function(req, res) {
