@@ -53,13 +53,9 @@ function setup() {
   try {
     var canInsertSystem = false;
     try {
-      db.exec("BEGIN");
-      db.prepare("INSERT INTO messages (contact_id, direction, content, channel) VALUES (-999, 'system', '__test__', 'test')").run();
-      db.prepare("DELETE FROM messages WHERE contact_id = -999 AND content = '__test__'").run();
-      db.exec("COMMIT");
-      canInsertSystem = true;
+      var tableDdl = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'").get();
+      canInsertSystem = !!(tableDdl && tableDdl.sql && tableDdl.sql.indexOf("'system'") !== -1);
     } catch (e) {
-      try { db.exec("ROLLBACK"); } catch(e2) {}
       canInsertSystem = false;
     }
 
