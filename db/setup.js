@@ -62,45 +62,38 @@ function setup() {
     if (!canInsertSystem) {
       console.log("[MIGRACION] Recreando tabla messages para permitir direction='system'...");
       db.exec("BEGIN");
-      // 1. Obtener las columnas actuales de messages
+      // 1. Leer columnas actuales dinamicamente — preserva cualquier columna futura
       var cols = db.prepare("PRAGMA table_info(messages)").all();
       var colNames = cols.map(function(c){ return c.name; });
+      var hasAutoincrement = !!(tableDdl && tableDdl.sql && /\bAUTOINCREMENT\b/i.test(tableDdl.sql));
+
+      // 2. Construir definiciones de columnas, parchando solo el CHECK de direction
       var colDefs = cols.map(function(c){
-        var def = c.name + " " + c.type;
-        if (c.notnull) def += " NOT NULL";
-        if (c.dflt_value !== null) def += " DEFAULT " + c.dflt_value;
-        if (c.pk) def += " PRIMARY KEY";
-        return def;
+        var parts = [c.name, c.type || "TEXT"];
+        if (c.pk) {
+          parts.push(hasAutoincrement ? "PRIMARY KEY AUTOINCREMENT" : "PRIMARY KEY");
+        } else {
+          if (c.notnull) parts.push("NOT NULL");
+          if (c.dflt_value !== null) parts.push("DEFAULT " + c.dflt_value);
+        }
+        if (c.name === "direction") {
+          parts.push("CHECK(direction IN ('incoming','outgoing','system'))");
+        }
+        return parts.join(" ");
       });
 
-      // 2. Construir CREATE TABLE nuevo con CHECK ampliado
-      var createNew = "CREATE TABLE messages_new (";
-      createNew += "id INTEGER PRIMARY KEY AUTOINCREMENT, ";
-      createNew += "contact_id INTEGER NOT NULL, ";
-      createNew += "direction TEXT NOT NULL CHECK(direction IN ('incoming','outgoing','system')), ";
-      createNew += "content TEXT NOT NULL, ";
-      createNew += "channel TEXT NOT NULL, ";
-      createNew += "channel_message_id TEXT, ";
-      createNew += "agent_name TEXT, ";
-      createNew += "is_ai_suggestion INTEGER DEFAULT 0, ";
-      createNew += "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, ";
-      createNew += "media_type TEXT, ";
-      createNew += "media_url TEXT, ";
-      createNew += "story_url TEXT, ";
-      createNew += "FOREIGN KEY (contact_id) REFERENCES contacts(id)";
-      createNew += ")";
+      // 3. Recrear tabla con CHECK ampliado y todas las columnas existentes
+      var createNew = "CREATE TABLE messages_new (" + colDefs.join(", ") + ", FOREIGN KEY (contact_id) REFERENCES contacts(id))";
       db.exec(createNew);
 
-      // 3. Copiar datos de la tabla vieja a la nueva (solo las columnas que existen en ambas)
-      var newTableCols = ["id","contact_id","direction","content","channel","channel_message_id","agent_name","is_ai_suggestion","created_at","media_type","media_url","story_url"];
-      var copyCols = newTableCols.filter(function(c){ return colNames.indexOf(c) !== -1; });
-      db.exec("INSERT INTO messages_new (" + copyCols.join(",") + ") SELECT " + copyCols.join(",") + " FROM messages");
+      // 4. Copiar todos los datos con todas las columnas actuales
+      db.exec("INSERT INTO messages_new (" + colNames.join(", ") + ") SELECT " + colNames.join(", ") + " FROM messages");
 
-      // 4. Borrar la vieja y renombrar la nueva
+      // 5. Reemplazar tabla
       db.exec("DROP TABLE messages");
       db.exec("ALTER TABLE messages_new RENAME TO messages");
 
-      // 5. Recrear indices
+      // 6. Recrear indices
       db.exec("CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id)");
       db.exec("CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at)");
 
