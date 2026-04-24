@@ -797,8 +797,13 @@ router.post("/contacts/:id/messages", async function(req, res) {
     var updatedContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(contact.id);
     res.json({ message: message, sendResult: sendResult, contact: updatedContact });
   } catch (err) {
-    console.error("[POST /contacts/:id/messages] Error:", err);
-    res.status(500).json({ error: err.message || "Error enviando mensaje" });
+    console.error("[POST /contacts/:id/messages] contactId=" + req.params.id
+      + " channel=" + (typeof contact !== "undefined" && contact ? contact.channel : "n/a")
+      + " channel_id=" + (typeof contact !== "undefined" && contact ? contact.channel_id : "n/a")
+      + " errCode=" + err.code
+      + " errMessage=" + err.message);
+    console.error(err.stack);
+    res.status(500).json({ error: err.message || "Error enviando mensaje", code: err.code });
   }
 });
 
