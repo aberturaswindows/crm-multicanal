@@ -264,7 +264,7 @@ function AttachmentBubble(props){
     ||(m.content&&m.content.match(/^\[Archivo:\s*(.+?)\s*\]$/)?m.content.match(/^\[Archivo:\s*(.+?)\s*\]$/)[1]:null)
     ||(m.media_url?m.media_url.split("/").pop().split("?")[0]:"Archivo");
   var info=getFileKind(fName);
-  var dlUrl=m.media_url+(fName?"?dl="+encodeURIComponent(fName):"");
+  var dlUrl="/api/files/"+m.id+"/download";
   var c=info.color;
   var cardSt={borderRadius:10,border:"1px solid "+c+"33",background:c+"0D",padding:"12px 14px",minWidth:200,maxWidth:280};
   /* Icon per kind */
@@ -308,7 +308,7 @@ function AttachmentBubble(props){
     React.createElement("div",{style:{display:"flex",gap:6}},
       info.kind==="pdf"&&React.createElement("a",{href:m.media_url,target:"_blank",style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:"transparent",color:c,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}},
         React.createElement(Icon,{name:"ExternalLink",size:11,color:c}),"Abrir"),
-      React.createElement("a",{href:dlUrl,download:fName,style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:info.kind==="cad"?c+"15":"transparent",color:c,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}},
+      React.createElement("a",{href:dlUrl,style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:info.kind==="cad"?c+"15":"transparent",color:c,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}},
         React.createElement(Icon,{name:"Download",size:11,color:c}),"Descargar")),
     info.kind==="cad"&&onQuickReply&&React.createElement("button",{
       onClick:function(){if(confirm("¿Enviar respuesta de incompatibilidad de AutoCAD?"))onQuickReply(DWG_INCOMPATIBLE_REPLY)},
@@ -963,7 +963,7 @@ function App(){
                             groups[g].map(function(f){
                               var fN=f.original_filename||(f.media_url?f.media_url.split("/").pop():"Archivo");
                               var fInfo=getFileKind(fN);
-                              var dlUrl=f.media_url+(fN?"?dl="+encodeURIComponent(fN):"");
+                              var dlUrl="/api/files/"+f.id+"/download";
                               return React.createElement("div",{key:f.id,style:{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",borderBottom:"1px solid "+T.border+"33"}},
                                 React.createElement("div",{style:{width:28,height:28,borderRadius:6,background:fInfo.color+"15",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
                                   React.createElement(Icon,{name:"FileText",size:13,color:fInfo.color})),
@@ -972,7 +972,7 @@ function App(){
                                   React.createElement("div",{style:{fontSize:10,color:T.t4,marginTop:1}},
                                     f.created_at?new Date(f.created_at.replace(" ","T")+"Z").toLocaleDateString("es-AR",{day:"numeric",month:"short"}):"",
                                     f.size_bytes?" · "+formatFileSize(f.size_bytes):"")),
-                                React.createElement("a",{href:dlUrl,download:fN,title:"Descargar",style:{color:T.t4,display:"flex",padding:4,borderRadius:4,flexShrink:0}},
+                                React.createElement("a",{href:dlUrl,title:"Descargar",style:{color:T.t4,display:"flex",padding:4,borderRadius:4,flexShrink:0}},
                                   React.createElement(Icon,{name:"Download",size:13,color:T.t3}))
                               );
                             })

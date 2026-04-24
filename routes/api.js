@@ -67,6 +67,34 @@ function updateMessageStatus(db, msgId, sendResult) {
   } catch (e) { console.error("[STATUS] updateMessageStatus error:", e.message); }
 }
 
+// MIME types para archivos tecnicos que Node no reconoce por default.
+// Compartido entre /media/:filename (inline) y /files/:id/download (attachment).
+var customMimeTypes = {
+  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+  ".gif": "image/gif", ".webp": "image/webp", ".heic": "image/heic",
+  ".mp4": "video/mp4", ".mov": "video/quicktime", ".avi": "video/x-msvideo",
+  ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav",
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".ppt": "application/vnd.ms-powerpoint",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".txt": "text/plain", ".csv": "text/csv",
+  ".zip": "application/zip", ".rar": "application/vnd.rar",
+  ".dwg": "application/acad",
+  ".dxf": "application/dxf",
+  ".skp": "application/vnd.sketchup.skp",
+  ".ifc": "application/x-step",
+  ".3ds": "application/x-3ds",
+  ".rvt": "application/octet-stream"
+};
+function mimeFor(filename) {
+  var ext = (path.extname(filename || "") || "").toLowerCase();
+  return customMimeTypes[ext] || "application/octet-stream";
+}
+
 router.get("/media/:filename", function(req, res) {
   // Sanitizar nombre: permitir letras, numeros, punto, guion bajo, guion, signo igual, dos puntos.
   // Estos caracteres aparecen en IDs de WhatsApp (base64url-like) y son seguros para filenames.
@@ -78,9 +106,7 @@ router.get("/media/:filename", function(req, res) {
   var filepath = path.join(MEDIA_DIR, filename);
 
   if (fs.existsSync(filepath)) {
-    var ext = path.extname(filename).toLowerCase();
-    var mimeTypes = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".heic": "image/heic", ".mp4": "video/mp4", ".mov": "video/quicktime", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".pdf": "application/pdf", ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xls": "application/vnd.ms-excel", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".txt": "text/plain", ".csv": "text/csv", ".zip": "application/zip", ".dwg": "application/acad", ".dxf": "application/dxf", ".skp": "application/octet-stream", ".rvt": "application/octet-stream", ".3ds": "application/octet-stream", ".ifc": "application/x-step", ".bin": "application/octet-stream" };
-    res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
+    res.setHeader("Content-Type", mimeFor(filename));
     var displayName = req.query.dl ? decodeURIComponent(req.query.dl).replace(/[^a-zA-Z0-9._\- ]/g, "_") : filename;
     res.setHeader("Content-Disposition", "inline; filename=\"" + displayName + "\"");
     res.sendFile(filepath);
@@ -93,6 +119,32 @@ router.get("/media/:filename", function(req, res) {
     } catch(e) {}
     res.status(404).json({ error: "Archivo no encontrado" });
   }
+});
+
+// Descarga forzada con Content-Disposition: attachment y filename UTF-8 correcto.
+// Publico intencionalmente (sin auth) para que Meta/WhatsApp pueda descargar si hace falta.
+router.get("/files/:id/download", function(req, res) {
+  var db = getDb();
+  var msg = db.prepare("SELECT id, media_url, original_filename FROM messages WHERE id = ?").get(req.params.id);
+  if (!msg || !msg.media_url) return res.status(404).json({ error: "Archivo no encontrado" });
+
+  var storageFilename = msg.media_url.split("/").pop().split("?")[0];
+  var safeStorage = storageFilename.replace(/[^a-zA-Z0-9._\-=:]/g, "");
+  if (safeStorage.indexOf("..") !== -1) return res.status(400).json({ error: "Nombre invalido" });
+  var absolutePath = path.join(MEDIA_DIR, safeStorage);
+  if (!fs.existsSync(absolutePath)) return res.status(404).json({ error: "Archivo no encontrado en disco" });
+
+  var originalFilename = msg.original_filename || safeStorage;
+  var mimeType = mimeFor(originalFilename);
+  var encoded = encodeURIComponent(originalFilename);
+  var asciiFallback = originalFilename.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+
+  res.setHeader("Content-Type", mimeType);
+  res.setHeader(
+    "Content-Disposition",
+    "attachment; filename=\"" + asciiFallback + "\"; filename*=UTF-8''" + encoded
+  );
+  res.sendFile(absolutePath);
 });
 
 // ============================================
