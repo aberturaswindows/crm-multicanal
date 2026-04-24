@@ -130,7 +130,7 @@ function Icon(props){
   var d=ICONS[name];
   if(!d)return React.createElement("span",{style:{width:size,height:size,display:"inline-block",...style}});
   return React.createElement("svg",{width:size,height:size,viewBox:"0 0 24 24",fill:"none",stroke:color,strokeWidth:"1.8",strokeLinecap:"round",strokeLinejoin:"round",style:{flexShrink:0,...style}},
-    d.split("M").filter(Boolean).map(function(seg,i){return React.createElement("path",{key:i,d:"M"+seg})})
+    d.split(/(?=M)/).filter(Boolean).map(function(seg,i){return React.createElement("path",{key:i,d:seg})})
   );
 }
 
@@ -535,7 +535,7 @@ function App(){
     }).catch(function(){});
   };
   var loadMessages=function(contactId){
-    fetch(API+"/contacts/"+contactId+"/messages").then(function(r){return r.json()}).then(function(msgs){setMessages(msgs);setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}).catch(function(){});
+    fetch(API+"/contacts/"+contactId+"/messages").then(function(r){return r.json()}).then(function(msgs){setMessages(Array.isArray(msgs)?msgs:[]);setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}).catch(function(){});
   };
   var loadSuggestion=async function(contactId){
     setAiLoading(true);setSuggestion("");
@@ -566,7 +566,7 @@ function App(){
     if(!user||!selected)return;
     var msgPoll=setInterval(function(){
       fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()}).then(function(newMsgs){
-        setMessages(function(prev){if(newMsgs.length!==prev.length){setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}return newMsgs});
+        setMessages(function(prev){var arr=Array.isArray(newMsgs)?newMsgs:prev;if(arr.length!==prev.length){setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100)}return arr});
       }).catch(function(){});
     },3000);
     return function(){clearInterval(msgPoll)};
@@ -595,7 +595,7 @@ function App(){
       var sendRes=await fetch(API+"/contacts/"+selected.id+"/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:msgText.trim(),agent_name:user.name})});
       var sendData=await sendRes.json();setMsgText("");
       var msgs=await fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()});
-      setMessages(msgs);
+      setMessages(Array.isArray(msgs)?msgs:[]);
       if(sendData&&sendData.contact){setSelected(sendData.contact)}else{var updatedC=await fetch(API+"/contacts/"+selected.id).then(function(r){return r.json()});setSelected(updatedC)}
       loadContacts();setTimeout(function(){if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight},100);
       loadSuggestion(selected.id);
