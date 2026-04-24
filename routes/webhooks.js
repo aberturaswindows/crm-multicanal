@@ -8,6 +8,7 @@ var whatsapp = require("../services/channels/whatsapp");
 var instagram = require("../services/channels/instagram");
 var facebook = require("../services/channels/facebook");
 var email = require("../services/channels/email");
+var profilePicture = require("../services/profile-picture");
 var fs = require("fs");
 var path = require("path");
 var axios = require("axios");
@@ -301,9 +302,15 @@ async function handleIncomingMessage(normalized) {
     }
 
     var contact = db.prepare("SELECT * FROM contacts WHERE channel = ? AND channel_id = ?").get(normalized.channel, normalized.channelId);
+    var isNewContact = false;
     if (!contact) {
       var result = db.prepare("INSERT INTO contacts (name, phone, email, channel, channel_id, phone_line, department, status, origin, conversation_stage) VALUES (?, ?, ?, ?, ?, ?, 'ventas', 'lead', ?, 'consulta')").run(normalized.senderName || "Contacto nuevo", normalized.senderPhone || null, normalized.senderEmail || null, normalized.channel, normalized.channelId, normalized.phoneLine || null, normalized.channel);
       contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(result.lastInsertRowid);
+      isNewContact = true;
+    }
+    if (contact && (isNewContact || profilePicture.isStale(contact.profile_picture_updated_at))) {
+      var cid = contact.id, ch = contact.channel, cuid = contact.channel_id;
+      setImmediate(function(){ profilePicture.fetchAndSaveProfilePicture(cid, ch, cuid); });
     }
     if (contact && normalized.senderName && normalized.senderName !== contact.name && contact.name.match(/^\d{10,}$/)) {
       db.prepare("UPDATE contacts SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(normalized.senderName, contact.id);

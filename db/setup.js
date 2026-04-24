@@ -30,7 +30,9 @@ function setup() {
     ["messages", "sent_at", "TIMESTAMP"],
     ["messages", "delivered_at", "TIMESTAMP"],
     ["messages", "read_at", "TIMESTAMP"],
-    ["messages", "failed_reason", "TEXT"]
+    ["messages", "failed_reason", "TEXT"],
+    ["contacts", "profile_picture_url", "TEXT"],
+    ["contacts", "profile_picture_updated_at", "TIMESTAMP"]
   ];
   for (var i = 0; i < newColumns.length; i++) {
     try {
