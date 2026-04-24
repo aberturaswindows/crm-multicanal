@@ -945,7 +945,8 @@ router.get("/quotes/stats", function(req, res) {
     var totalAlternatives = db.prepare("SELECT COALESCE(SUM(alternatives), 0) as total FROM quotes").get().total;
     var byStatus = db.prepare("SELECT status, COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount FROM quotes GROUP BY status ORDER BY count DESC").all();
     var byUser = db.prepare("SELECT created_by, COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount, COALESCE(SUM(alternatives), 0) as total_alternatives FROM quotes GROUP BY created_by ORDER BY count DESC").all();
-    var approvedRate = db.prepare("SELECT ROUND(CAST(SUM(CASE WHEN status = 'aprobado' THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) * 100, 1) as rate FROM quotes WHERE status IN ('aprobado', 'rechazado')").get().rate || 0;
+    var approvedStats = db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'aprobado' THEN 1 ELSE 0 END) AS approved FROM quotes").get();
+    var approvedRate = approvedStats.total > 0 ? Math.round((approvedStats.approved / approvedStats.total) * 1000) / 10 : 0;
     var upcomingFollowups = db.prepare("SELECT q.*, c.name as contact_name FROM quotes q JOIN contacts c ON q.contact_id = c.id WHERE q.followup_date IS NOT NULL AND q.followup_date <= date('now', '+3 days') AND q.status IN ('pendiente', 'enviado') ORDER BY q.followup_date ASC LIMIT 20").all();
     res.json({ total: total, totalAmount: totalAmount, totalAlternatives: totalAlternatives, byStatus: byStatus, byUser: byUser, approvedRate: approvedRate, upcomingFollowups: upcomingFollowups });
   } catch (e) {
