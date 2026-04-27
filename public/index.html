@@ -96,6 +96,8 @@ var playNotifSound=function(){try{if(!_audioCtx)_audioCtx=new(window.AudioContex
 function getInitials(name){return(name||"?").split(" ").map(function(w){return w[0]}).join("").substring(0,2).toUpperCase()}
 function formatTime(ts){if(!ts)return"";var d=new Date(ts.replace(" ","T")+"Z");return d.getHours()+":"+String(d.getMinutes()).padStart(2,"0")}
 function formatDate(ts){if(!ts)return"-";var d=new Date(ts.replace(" ","T")+"Z");return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()}
+function dayKey(ts){if(!ts)return"";var d=new Date(ts.replace(" ","T")+"Z");return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function formatDateSeparator(ts){if(!ts)return"";var d=new Date(ts.replace(" ","T")+"Z");var n=new Date();var a=new Date(d.getFullYear(),d.getMonth(),d.getDate());var b=new Date(n.getFullYear(),n.getMonth(),n.getDate());var diff=Math.round((b-a)/86400000);if(diff===0)return"Hoy";if(diff===1)return"Ayer";if(diff>1&&diff<7)return d.toLocaleDateString("es-AR",{weekday:"long"});return d.toLocaleDateString("es-AR",{day:"numeric",month:"long",year:"numeric"})}
 function formatMoney(n){if(!n&&n!==0)return"$0";return"$"+Number(n).toLocaleString("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0})}
 
 /* ── SVG ICONS ───────────────────────────────────── */
@@ -850,13 +852,20 @@ function App(){
           ),
           /* Messages */
           React.createElement("div",{ref:chatRef,style:{flex:1,overflowY:"auto",padding:"16px 32px",display:"flex",flexDirection:"column",gap:8}},
-            React.createElement("div",{style:{textAlign:"center",marginBottom:4}},
-              React.createElement("span",{style:{fontSize:11,color:T.t4,background:T.card,padding:"3px 12px",borderRadius:10}},
-                new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"}))),
-            messages.map(function(m,i){
-              if(m.direction==="system")return renderSystemMessage(m,i);
+            (function(){var lastDay=null;return messages.map(function(m,i){
+              var ts=m.created_at||m.timestamp;
+              var curDay=dayKey(ts);
+              var sep=null;
+              if(curDay&&curDay!==lastDay){
+                lastDay=curDay;
+                sep=React.createElement("div",{key:"sep-"+curDay,style:{display:"flex",alignItems:"center",gap:10,margin:"10px 0 2px",alignSelf:"stretch"}},
+                  React.createElement("div",{style:{flex:1,height:1,background:T.border}}),
+                  React.createElement("span",{style:{fontSize:11,color:T.t4}},formatDateSeparator(ts)),
+                  React.createElement("div",{style:{flex:1,height:1,background:T.border}}));
+              }
+              if(m.direction==="system"){var sm=renderSystemMessage(m,i);return sep?[sep,sm]:sm}
               var isAi=m.agent_name==="Claudia"||m.agent_name==="IA NexoCRM";var isOut=m.direction==="outgoing";
-              return React.createElement("div",{key:m.id||i,style:{alignSelf:isOut?"flex-end":"flex-start",maxWidth:"72%",animation:"slideIn .2s ease"}},
+              var bubble=React.createElement("div",{key:m.id||i,style:{alignSelf:isOut?"flex-end":"flex-start",maxWidth:"72%",animation:"slideIn .2s ease"}},
                 isOut&&isAi&&React.createElement("div",{style:{fontSize:10,color:T.neutral,fontWeight:700,textAlign:"right",marginBottom:3}},
                   "✦ Claudia"),
                 React.createElement("div",{style:{padding:"9px 13px",borderRadius:isOut?"14px 4px 14px 14px":"4px 14px 14px 14px",
@@ -869,7 +878,8 @@ function App(){
                   isOut&&m.agent_name&&!isAi&&React.createElement("span",{style:{fontSize:10,color:T.accent}},"· "+m.agent_name),
                   isOut&&m.channel!=="email"&&m.channel!=="telefono"&&React.createElement(MessageStatus,{m:m}))
               );
-            }),
+              return sep?[sep,bubble]:bubble;
+            })})(),
             aiLoading&&!selected.ai_paused&&React.createElement("div",{style:{alignSelf:"flex-start",marginLeft:8}},
               React.createElement("div",{style:{fontSize:10,color:T.neutral,fontWeight:700,marginBottom:3}},"✦ Claudia escribe…"),
               React.createElement("div",{style:{background:T.neutralBg,border:"1px solid "+T.neutralBd,borderRadius:"4px 12px 12px 12px"}},
