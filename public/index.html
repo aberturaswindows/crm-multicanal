@@ -525,8 +525,7 @@ function App(){
     if(!user)return;
     var url=API+"/contacts?";
     if(filterCh!=="all"&&filterCh!=="unread")url+="channel="+filterCh+"&";
-    if(user.role==="agent"&&user.department){url+="department="+user.department+"&"}
-    else if(filterDept!=="all"){url+="department="+filterDept+"&"}
+   if(filterDept!=="all"){url+="department="+filterDept+"&"}
     fetch(url).then(function(r){return r.json()}).then(function(newContacts){
       if(prevContactCount.current>0){
         var newlyUnread=newContacts.find(function(nc){
@@ -766,7 +765,7 @@ function App(){
               style:{flex:f[0]==="all"||f[0]==="unread"?2:1,padding:"4px 4px",borderRadius:6,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",
                 border:"1px solid "+(active?f[2]+"55":T.border),background:active?f[2]+"12":"transparent",color:active?f[2]:T.t4}},f[1]);})),
           /* Dept filter (admin only) */
-          user.role==="admin"&&React.createElement("div",{style:{marginBottom:8}},
+          React.createElement("div",{style:{marginBottom:8}},
             React.createElement("select",{value:filterDept,onChange:function(e){setFilterDept(e.target.value)},style:Object.assign({},sel,{fontSize:11,padding:"5px 8px"})},
               React.createElement("option",{value:"all"},"Todos los departamentos"),
               Object.entries(DEPARTMENTS).map(function(e){return React.createElement("option",{key:e[0],value:e[0]},e[1].label)})
