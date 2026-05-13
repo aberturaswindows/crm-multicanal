@@ -65,6 +65,16 @@ var COMPANY_KNOWLEDGE = [
   "Telefono ventas: 261-353-9384.",
   "Realizamos obras en todo el pais. Fuera del Gran Mendoza tiene recargo de medicion, flete e instalacion que se calcula para cada obra.",
   "",
+  "CORREOS DE CONTACTO (USO CORRECTO - NO CONFUNDIR):",
+  "- ventas@aberturaswindows.com.ar -> consultas comerciales, envio de planos, croquis, fotos, pedidos de cotizacion y presupuestos. Es el correo del sector Ventas (el mismo sector que atiende este chat de WhatsApp).",
+  "- medicionesyservicios@aberturaswindows.com.ar -> EXCLUSIVAMENTE para coordinar mediciones de obra en domicilio (una vez aprobado un presupuesto) o servicios tecnicos post-venta. NUNCA usar este correo para enviar planos o pedir cotizaciones.",
+  "",
+  "ENVIO DE PLANOS / ARCHIVOS PARA COTIZAR:",
+  "- Cuando un cliente quiera enviar planos, croquis, fotos o medidas para cotizar carpinteria, SIEMPRE sugerir PRIMERO que los envie por este mismo chat de WhatsApp, ya que esta hablando directamente con el sector de Ventas (261-353-9384).",
+  "- Solo si el cliente prefiere o insiste en usar correo electronico, indicar: ventas@aberturaswindows.com.ar",
+  "- NUNCA dar el correo medicionesyservicios@aberturaswindows.com.ar para envio de planos o solicitudes de cotizacion.",
+  "- Ejemplo correcto: 'Puede enviarmelos directamente por aca, este chat es con el sector de Ventas asi que el equipo los recibe y los evalua. Si prefiere correo, tambien puede escribir a ventas@aberturaswindows.com.ar.'",
+  "",
   "PRODUCTOS PRINCIPALES:",
   "- Aberturas de ALUMINIO: desde media prestacion hasta RPT (maxima prestacion). Extrusoras: FLAMIA y ALUWIND (linea Enkel de alta prestacion, minimalista).",
   "- Aberturas de PVC: perfiles REHAU, la mejor empresa de perfiles de PVC en Argentina.",
@@ -143,7 +153,7 @@ var COMPANY_KNOWLEDGE = [
   "- Yeso o enlucido fino en todos los muros interiores terminados.",
   "- Revestimiento de piso colocado donde se deban colocar puertas de abrir.",
   "- Para puertas ventanas corredizas con riel inferior embutido: dejar sin colocar la ultima hilera de ceramico frente a la abertura.",
-  "- Consultas tecnicas y de fabricacion: 261-526-3244 o medicionesyservicios@aberturaswindows.com.ar",
+  "- Contacto del area de Mediciones y Servicios Tecnicos (SOLO para coordinar mediciones de obra y servicios post-venta, NO para cotizaciones): 261-526-3244 o medicionesyservicios@aberturaswindows.com.ar",
   "",
   "SERVICIO POST-VENTA / SERVICIO DE CARPINTERIA:",
   "- SOLO hacemos servicio en aberturas fabricadas e instaladas por nosotros.",
@@ -303,6 +313,7 @@ async function generateSuggestion(contact, messages) {
   prompt += "- Si el cliente ya dio los datos para cotizar, confirmar que se va a preparar el presupuesto en hasta 72 hs hábiles.\n";
   prompt += "- Si preguntan por plazos, dar los rangos generales según el material y color.\n";
   prompt += "- Invitar al cliente a visitar el showroom cuando sea apropiado.\n";
+  prompt += "- ENVÍO DE PLANOS/CROQUIS/FOTOS PARA COTIZAR: SIEMPRE sugerir PRIMERO que los envíe por este mismo chat de WhatsApp (es Ventas). Solo si insiste en correo, indicar ventas@aberturaswindows.com.ar. NUNCA dar el mail medicionesyservicios@ para envío de planos o cotizaciones (ese es solo para coordinar mediciones de obra y servicios post-venta).\n";
   prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
   prompt += "- Si el cliente envió un mensaje de voz, respondé normalmente y preguntá en qué le podés ayudar.\n";
   prompt += "- Si el cliente consulta por servicio de carpintería/post-venta, seguí el protocolo de verificación de obra propia.\n";
@@ -415,6 +426,7 @@ async function generateAutoReply(contact, messages) {
   prompt += "- NUNCA inventes información técnica. Si no sabés, decile 'Lo consulto con el área técnica y le confirmo'.\n";
   prompt += "- NUNCA dar precios por mensaje. Siempre ofrecé armar un presupuesto formal.\n";
   prompt += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho o el alto?'\n";
+  prompt += "- ENVÍO DE PLANOS/CROQUIS/FOTOS PARA COTIZAR: SIEMPRE sugerir PRIMERO que los envíe por este mismo chat de WhatsApp (es Ventas). Solo si insiste en correo, indicar ventas@aberturaswindows.com.ar. NUNCA dar el mail medicionesyservicios@ para envío de planos o cotizaciones (ese es solo para coordinar mediciones de obra y servicios post-venta).\n";
   prompt += "- Respuestas breves: 2-3 oraciones máximo.\n";
   prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
   prompt += "- Si el cliente envió un mensaje de voz, respondé normalmente y preguntá en qué le podés ayudar.\n\n";
