@@ -88,6 +88,19 @@ var COMPANY_KNOWLEDGE = [
   "- Puertas automaticas: AUDOOR.",
   "- Toldos: IPROA.",
   "",
+  "LINEA CANADIAN PROFILE (REVESTIMIENTOS, PISOS Y DECK WPC/SPC):",
+  "Ademas de aberturas, trabajamos productos de la marca CANADIAN PROFILE. Si un cliente consulta por esta marca, confirmar que SI somos distribuidores y la trabajamos.",
+  "Lineas disponibles:",
+  "- Revestimientos de pared interior: placas y paneles WPC, placas PS simil madera, placas SPC simil marmol y travertino.",
+  "- Revestimientos exteriores: revestimiento portante y siding (colores negro, blanco, gris, cafe y teca).",
+  "- Pisos SPC: sistema click con goma IXPE aplicada, y simil porcelanato. Incluye zocalos a juego.",
+  "- Deck exterior: tablas, baldosas encastrables, soportes de conexion y clavadores.",
+  "- Parasoles lisos y 3D, angulos, esquineros, molduras y cubrecantos.",
+  "- Cerco perimetral: tablas WPC con kit de postes de aluminio y bases de acero.",
+  "- Accesorios y griferia de bano: toalleros, porta vasos, jaboneras, griferias, monocomando y duchas.",
+  "Mas info: www.canadianprofile.com.ar - Instagram @canadianprofilearg",
+  "IMPORTANTE: NO dar precios de productos Canadian Profile por mensaje. Igual que con las aberturas, siempre ofrecer armar un presupuesto formal y pedir los datos necesarios.",
+  "",
   "HERRAJES:",
   "- PVC REHAU: herrajes marca GU, ASSA ABLOY, rodamientos PABOSSE.",
   "- Aluminio FLAMIA: herrajes marca TANIT, GIESSE, PABOSSE.",
@@ -594,7 +607,7 @@ async function detectLostReason(messageText) {
 function classifyByKeywords(text) {
   var lower = text.toLowerCase();
   var rules = {
-    ventas: ["precio", "cotizacion", "presupuesto", "comprar", "costo", "descuento", "oferta", "contratar", "producto", "catalogo", "promocion", "cuanto sale", "interesado", "abertura", "ventana", "puerta", "aluminio", "pvc", "dvh", "vidrio", "corrediza", "mampara", "persiana", "mosquitero", "porton", "baranda", "toldo", "cortina"],
+    ventas: ["precio", "cotizacion", "presupuesto", "comprar", "costo", "descuento", "oferta", "contratar", "producto", "catalogo", "promocion", "cuanto sale", "interesado", "abertura", "ventana", "puerta", "aluminio", "pvc", "dvh", "vidrio", "corrediza", "mampara", "persiana", "mosquitero", "porton", "baranda", "toldo", "cortina", "revestimiento", "siding", "deck", "piso", "spc", "wpc", "parasol", "cerco", "griferia", "canadian"],
     soporte: ["no funciona", "error", "problema", "tecnico", "falla", "ayuda", "configurar", "instalar", "medicion", "colocacion", "fabricacion", "cuando esta", "estado", "pedido", "entrega", "servicio", "reparacion", "carpinteria", "visita tecnica"],
     admin: ["factura", "pago", "cobro", "recibo", "cuit", "datos fiscales", "transferencia", "suscripcion", "vencimiento", "comprobante"],
     reclamos: ["reclamo", "queja", "insatisfecho", "mal servicio", "devolver", "reembolso", "devolucion", "pesimo", "inaceptable", "denuncia", "enojado"]
