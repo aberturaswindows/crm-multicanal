@@ -132,6 +132,8 @@ var ICONS={
   ExternalLink:"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3",
   MailOpen:"M22 13H2V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v7zM22 13l-10 7-10-7",
   FolderOpen:"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
+  ChevronLeft:"M15 18l-6-6 6-6",
+  ChevronRight:"M9 18l6-6-6-6",
 };
 function Icon(props){
   var name=props.name,size=props.size||16,color=props.color||T.t3,style=props.style||{};
@@ -139,6 +141,50 @@ function Icon(props){
   if(!d)return React.createElement("span",{style:{width:size,height:size,display:"inline-block",...style}});
   return React.createElement("svg",{width:size,height:size,viewBox:"0 0 24 24",fill:"none",stroke:color,strokeWidth:"1.8",strokeLinecap:"round",strokeLinejoin:"round",style:{flexShrink:0,...style}},
     d.split(/(?=M)/).filter(Boolean).map(function(seg,i){return React.createElement("path",{key:i,d:seg})})
+  );
+}
+
+/* ── LIGHTBOX (visor tipo WhatsApp Web) ──────────── */
+/* Variable a nivel de modulo: renderMedia la usa para abrir el visor.
+   App la conecta al estado del Lightbox al montarse. */
+var _openLightbox=function(){};
+
+function Lightbox(props){
+  var items=props.items||[];           // [{url, kind:"image"|"video"|"pdf", name}]
+  var _i=useState(props.startIndex||0);var idx=_i[0];var setIdx=_i[1];
+  useEffect(function(){setIdx(props.startIndex||0)},[props.startIndex]);
+  useEffect(function(){
+    function onKey(e){
+      if(e.key==="Escape")props.onClose();
+      else if(e.key==="ArrowLeft")setIdx(function(p){return p>0?p-1:p});
+      else if(e.key==="ArrowRight")setIdx(function(p){return p<items.length-1?p+1:p});
+    }
+    document.addEventListener("keydown",onKey);
+    return function(){document.removeEventListener("keydown",onKey)};
+  },[items.length]);
+  if(!items.length)return null;
+  var cur=items[idx]||items[0];
+  var hasPrev=idx>0,hasNext=idx<items.length-1;
+  var navBtn={position:"absolute",top:"50%",transform:"translateY(-50%)",background:"rgba(0,0,0,0.5)",border:"none",borderRadius:"50%",width:46,height:46,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2};
+  var topBtn={background:"rgba(0,0,0,0.5)",border:"none",borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"};
+  var media;
+  if(cur.kind==="video"){media=React.createElement("video",{key:cur.url,src:cur.url,controls:true,autoPlay:true,style:{maxWidth:"90vw",maxHeight:"82vh",borderRadius:8,background:"#000"}});}
+  else if(cur.kind==="pdf"){media=React.createElement("embed",{key:cur.url,src:cur.url,type:"application/pdf",style:{width:"90vw",height:"85vh",borderRadius:8,background:"#fff"}});}
+  else{media=React.createElement("img",{key:cur.url,src:cur.url,style:{maxWidth:"90vw",maxHeight:"82vh",borderRadius:8,objectFit:"contain",userSelect:"none"}});}
+  return React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center"},onClick:function(e){if(e.target===e.currentTarget)props.onClose();}},
+    /* barra superior */
+    React.createElement("div",{style:{position:"absolute",top:0,left:0,right:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",background:"linear-gradient(rgba(0,0,0,0.6),transparent)",zIndex:2}},
+      React.createElement("div",{style:{color:"#fff",fontSize:13,fontWeight:600,maxWidth:"60vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},
+        (cur.name||"Archivo")+(items.length>1?("  ·  "+(idx+1)+"/"+items.length):"")),
+      React.createElement("div",{style:{display:"flex",gap:10}},
+        React.createElement("a",{href:cur.url,download:cur.name||"",target:"_blank",style:Object.assign({},topBtn,{textDecoration:"none"}),title:"Descargar"},React.createElement(Icon,{name:"Download",size:18,color:"#fff"})),
+        React.createElement("button",{onClick:props.onClose,style:topBtn,title:"Cerrar"},React.createElement(Icon,{name:"X",size:18,color:"#fff"})))),
+    /* flecha izquierda */
+    items.length>1&&React.createElement("button",{onClick:function(){if(hasPrev)setIdx(idx-1)},style:Object.assign({},navBtn,{left:16,opacity:hasPrev?1:0.3,cursor:hasPrev?"pointer":"default"})},React.createElement(Icon,{name:"ChevronLeft",size:24,color:"#fff"})),
+    /* medio */
+    media,
+    /* flecha derecha */
+    items.length>1&&React.createElement("button",{onClick:function(){if(hasNext)setIdx(idx+1)},style:Object.assign({},navBtn,{right:16,opacity:hasNext?1:0.3,cursor:hasNext?"pointer":"default"})},React.createElement(Icon,{name:"ChevronRight",size:24,color:"#fff"}))
   );
 }
 
@@ -321,6 +367,8 @@ function AttachmentBubble(props){
       React.createElement("div",{style:{fontSize:11,color:T.t4,marginBottom:2}},info.hint),
       React.createElement("div",{style:{fontSize:10,color:T.t4,marginBottom:8}},info.compat)),
     React.createElement("div",{style:{display:"flex",gap:6}},
+      info.kind==="pdf"&&React.createElement("button",{onClick:function(){_openLightbox(m.media_url)},style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:c+"15",color:c,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}},
+        React.createElement(Icon,{name:"Image",size:11,color:c}),"Ver"),
       info.kind==="pdf"&&React.createElement("a",{href:m.media_url,target:"_blank",style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:"transparent",color:c,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}},
         React.createElement(Icon,{name:"ExternalLink",size:11,color:c}),"Abrir"),
       React.createElement("a",{href:dlUrl,style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:info.kind==="cad"?c+"15":"transparent",color:c,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}},
@@ -340,9 +388,13 @@ function renderMedia(m,onQuickReply){
   if(m.media_type==="image"&&m.media_url){
     var imgExt=(m.original_filename||"").split(".").pop().toLowerCase();
     if(imgExt==="heic"){els.push(React.createElement(AttachmentBubble,{key:"file",m:m,onQuickReply:onQuickReply}))}
-    else{els.push(React.createElement("img",{key:"img",src:m.media_url,style:{maxWidth:"100%",maxHeight:240,borderRadius:8,display:"block",cursor:"pointer"},onClick:function(){window.open(m.media_url,"_blank")},onError:function(e){e.target.alt="Imagen no disponible"}}))}
+    else{els.push(React.createElement("img",{key:"img",src:m.media_url,style:{maxWidth:"100%",maxHeight:240,borderRadius:8,display:"block",cursor:"pointer"},onClick:function(){_openLightbox(m.media_url)},onError:function(e){e.target.alt="Imagen no disponible"}}))}
   }
-  if(m.media_type==="video"&&m.media_url){els.push(React.createElement("video",{key:"vid",src:m.media_url,controls:true,style:{maxWidth:"100%",maxHeight:240,borderRadius:8,display:"block"}}))}
+  if(m.media_type==="video"&&m.media_url){els.push(React.createElement("div",{key:"vid",style:{position:"relative",display:"inline-block",cursor:"pointer"},onClick:function(){_openLightbox(m.media_url)}},
+    React.createElement("video",{src:m.media_url,style:{maxWidth:"100%",maxHeight:240,borderRadius:8,display:"block",pointerEvents:"none"}}),
+    React.createElement("div",{style:{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}},
+      React.createElement("div",{style:{width:54,height:54,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}},
+        React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"#fff"},React.createElement("path",{d:"M8 5v14l11-7z"}))))))}
   if(m.media_type==="audio"&&m.media_url){els.push(React.createElement(AudioPlayer,{key:"aud",m:m,isOut:m.direction==="outgoing"}))}
   if(m.media_type==="file"&&m.media_url){els.push(React.createElement(AttachmentBubble,{key:"file",m:m,onQuickReply:onQuickReply}))}
   if(m.content&&!isPlaceholder&&m.media_type!=="file"){els.push(React.createElement("span",{key:"txt",style:{lineHeight:1.55}},m.content))}
@@ -482,6 +534,7 @@ function App(){
   var _st=useState("");var searchText=_st[0];var setSearchText=_st[1];
   var _snd=useState(true);var soundOn=_snd[0];var setSoundOn=_snd[1];
   var _tst=useState(null);var toastContact=_tst[0];var setToastContact=_tst[1];
+  var _lb=useState(null);var lightbox=_lb[0];var setLightbox=_lb[1];
   var prevContactCount=useRef(0);
   var prevContactsRef=useRef([]);
   var selectedRef=useRef(null);
@@ -688,6 +741,28 @@ function App(){
   /* ── DERIVED ─────────────────────────────────── */
   var totalUnread=contacts.filter(function(c){return c.is_unread}).length;
   var attachmentCount=messages.filter(function(m){return m.media_url&&m.media_type}).length;
+  /* Lista de medios visibles (imagen/video/pdf) para navegar en el lightbox */
+  var lightboxItems=messages.filter(function(m){
+    if(!m.media_url)return false;
+    if(m.media_type==="image"){var e=(m.original_filename||"").split(".").pop().toLowerCase();return e!=="heic"}
+    if(m.media_type==="video")return true;
+    if(m.media_type==="file"){return getFileKind(m.original_filename||m.media_url||"").kind==="pdf"}
+    return false;
+  }).map(function(m){
+    var kind="image";
+    if(m.media_type==="video")kind="video";
+    else if(m.media_type==="file")kind="pdf";
+    var nm=m.original_filename||(m.media_url?m.media_url.split("/").pop().split("?")[0]:"Archivo");
+    return {url:m.media_url,kind:kind,name:nm};
+  });
+  useEffect(function(){
+    _openLightbox=function(url){
+      var start=0;
+      for(var i=0;i<lightboxItems.length;i++){if(lightboxItems[i].url===url){start=i;break}}
+      setLightbox({items:lightboxItems,startIndex:start});
+    };
+    return function(){_openLightbox=function(){}};
+  },[messages,selected]);
   var ch=selected?CHANNELS[selected.channel]:null;
   var dept=selected?DEPARTMENTS[selected.department]:null;
   var displayContacts=contacts.filter(function(c){
@@ -1245,6 +1320,9 @@ function App(){
 
     /* ── TOAST ───────────────────────────────── */
     toastContact&&React.createElement(Toast,{contact:toastContact,onClose:function(){setToastContact(null)}}),
+
+    /* ── LIGHTBOX (visor tipo WhatsApp Web) ──── */
+    lightbox&&React.createElement(Lightbox,{items:lightbox.items,startIndex:lightbox.startIndex,onClose:function(){setLightbox(null)}}),
 
     /* ── TEMPLATE MODAL (100% original logic) ── */
     showTemplateModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget)closeTemplateModal()}},
