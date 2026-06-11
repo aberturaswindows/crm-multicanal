@@ -51,7 +51,7 @@ async function sendMessage(to, text, phoneLine) {
       errorCode = errData.error.code;
       errorSubcode = errData.error.error_subcode;
     }
-    console.error("[WHATSAPP] Error enviando texto:", errData || err.message);
+    console.error("[WHATSAPP] Error enviando texto >>>", JSON.stringify(errData) || err.message, "| code:", errorCode, "| subcode:", errorSubcode, "| status:", (err.response ? err.response.status : "sin status"), "| tokenLen:", (token ? token.length : 0));
     return {
       success: false,
       error: errMsg,
@@ -476,4 +476,3 @@ module.exports = {
   processWebhook: processWebhook,
   downloadMedia: downloadMedia
 };
-
