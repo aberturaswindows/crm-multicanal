@@ -762,13 +762,14 @@ function App(){
   var handleSendPresup=async function(){
     if(!presupFileUrl){alert("Esperá a que termine de cargar el PDF");return}
     setPresupSending(true);
-    /* nombre del cliente para la variable {{1}}; si no hay, usa un saludo genérico */
-    var nombre=(selected.name||"").trim()||"Estimado/a";
+    /* {{1}} = nombre del cliente (del contacto); {{2}} = nombre del empleado logueado (firma) */
+    var nombreCliente=(selected.name||"").trim()||"Estimado/a";
+    var nombreVendedor=(user&&user.name?user.name:"Aberturas Windows").trim();
     try{
       var res=await fetch(API+"/contacts/"+selected.id+"/send-template",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
         template_name:PRESUP_TEMPLATE,
         language_code:"es",
-        body_params:[nombre],
+        body_params:[nombreCliente,nombreVendedor],
         attachment_url:presupFileUrl,
         attachment_type:"document",
         attachment_filename:presupFile?presupFile.name:"Presupuesto.pdf",
