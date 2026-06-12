@@ -570,6 +570,14 @@ function App(){
   var _tmfu=useState(null);var tmFileUrlVal=_tmfu[0];var setTmFileUrl=_tmfu[1];
   var _tmsd=useState(false);var tmSendingVal=_tmsd[0];var setTmSending=_tmsd[1];
   var tmFileInputRef=useRef(null);
+  /* Modal dedicado "Enviar presupuesto" (APB: un solo PDF, sin elegir plantilla) */
+  var _pmsh=useState(false);var showPresupModal=_pmsh[0];var setShowPresupModal=_pmsh[1];
+  var _pmfl=useState(null);var presupFile=_pmfl[0];var setPresupFile=_pmfl[1];
+  var _pmfu=useState(null);var presupFileUrl=_pmfu[0];var setPresupFileUrl=_pmfu[1];
+  var _pmup=useState(false);var presupUploading=_pmup[0];var setPresupUploading=_pmup[1];
+  var _pmsd=useState(false);var presupSending=_pmsd[0];var setPresupSending=_pmsd[1];
+  var presupFileInputRef=useRef(null);
+  var PRESUP_TEMPLATE="envio_presupuesto_pdf"; /* nombre exacto de la plantilla aprobada con header de documento */
 
   var loggedIn=!!user;
 
@@ -731,7 +739,50 @@ function App(){
     }catch(err){alert("Error: "+err.message)}
     setTmSending(false);
   };
-  /* Quotes handlers */
+  /* ── ENVIAR PRESUPUESTO (botón directo APB) ──────── */
+  var openPresupModal=function(){
+    if(!selected||selected.channel!=="whatsapp"){alert("El envío de presupuesto solo funciona en chats de WhatsApp");return}
+    setPresupFile(null);setPresupFileUrl(null);setPresupUploading(false);setPresupSending(false);
+    setShowPresupModal(true);
+  };
+  var closePresupModal=function(){setShowPresupModal(false);setPresupFile(null);setPresupFileUrl(null);setPresupUploading(false);setPresupSending(false)};
+  var handlePresupFile=async function(file){
+    if(!file)return;
+    if(file.type!=="application/pdf"&&(file.name||"").toLowerCase().indexOf(".pdf")===-1){alert("El presupuesto tiene que ser un archivo PDF");return}
+    setPresupFile(file);setPresupUploading(true);setPresupFileUrl(null);
+    var formData=new FormData();formData.append("file",file);
+    try{
+      var res=await fetch(API+"/templates/upload-attachment",{method:"POST",body:formData});
+      var data=await res.json();
+      if(res.ok&&data.url){setPresupFileUrl(data.url)}
+      else{alert(data.error||"No se pudo subir el PDF");setPresupFile(null)}
+    }catch(e){alert("Error subiendo el PDF: "+e.message);setPresupFile(null)}
+    setPresupUploading(false);
+  };
+  var handleSendPresup=async function(){
+    if(!presupFileUrl){alert("Esperá a que termine de cargar el PDF");return}
+    setPresupSending(true);
+    /* nombre del cliente para la variable {{1}}; si no hay, usa un saludo genérico */
+    var nombre=(selected.name||"").trim()||"Estimado/a";
+    try{
+      var res=await fetch(API+"/contacts/"+selected.id+"/send-template",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        template_name:PRESUP_TEMPLATE,
+        language_code:"es",
+        body_params:[nombre],
+        attachment_url:presupFileUrl,
+        attachment_type:"document",
+        attachment_filename:presupFile?presupFile.name:"Presupuesto.pdf",
+        agent_name:user.name
+      })});
+      var data=await res.json();
+      if(data.sendResult&&data.sendResult.success){
+        closePresupModal();loadMessages(selected.id);loadContacts();
+      }else{
+        alert("No se pudo enviar el presupuesto: "+((data.sendResult&&data.sendResult.error)||data.error||"error desconocido"));
+        setPresupSending(false);
+      }
+    }catch(err){alert("Error: "+err.message);setPresupSending(false)}
+  };
   var resetQuoteForm=function(){setQfContactId("");setQfDesc("");setQfAmount("");setQfStatus("pendiente");setQfCreatedBy(user.name);setQfReceivedAt("");setQfDeliveryDate("");setQfFollowupDate("");setQfNotes("");setQfAlternatives(1);setEditingQuote(null)};
   var openNewQuote=function(contactId){resetQuoteForm();if(contactId)setQfContactId(String(contactId));setQfCreatedBy(user.name);setShowQuoteForm(true)};
   var openEditQuote=function(q){setEditingQuote(q);setQfContactId(String(q.contact_id));setQfDesc(q.description||"");setQfAmount(q.amount?String(q.amount):"");setQfStatus(q.status);setQfCreatedBy(q.created_by||"");setQfReceivedAt(q.received_at||"");setQfDeliveryDate(q.delivery_date||"");setQfFollowupDate(q.followup_date||"");setQfNotes(q.notes||"");setQfAlternatives(q.alternatives||1);setShowQuoteForm(true)};
@@ -889,6 +940,9 @@ function App(){
                 React.createElement(StageBadge,{stage:selected.conversation_stage||"consulta"}))),
             /* Header actions */
             React.createElement("div",{style:{display:"flex",gap:6}},
+              selected.channel==="whatsapp"&&React.createElement("button",{onClick:openPresupModal,
+                style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"none",background:"#1D9E75",color:"#fff",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}},
+                React.createElement(Icon,{name:"FileText",size:13,color:"#fff"}),"Enviar presupuesto"),
               selected.channel==="whatsapp"&&React.createElement("button",{onClick:openTemplateModalExisting,
                 style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid #25D36633",background:"#25D36608",color:"#25D366",cursor:"pointer",fontFamily:"inherit"}},
                 "📋 Plantilla"),
@@ -1325,6 +1379,35 @@ function App(){
     lightbox&&React.createElement(Lightbox,{items:lightbox.items,startIndex:lightbox.startIndex,onClose:function(){setLightbox(null)}}),
 
     /* ── TEMPLATE MODAL (100% original logic) ── */
+    /* ── MODAL ENVIAR PRESUPUESTO (APB) ──────── */
+    showPresupModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget&&!presupSending)closePresupModal()}},
+      React.createElement("div",{style:{background:T.bg1,border:"1px solid "+T.border,borderRadius:16,padding:24,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
+          React.createElement("div",{style:{fontSize:16,fontWeight:800,color:T.t1}},"Enviar presupuesto"),
+          React.createElement("button",{onClick:closePresupModal,style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:18}))),
+        React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:18}},"Para ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||"el cliente"),". Soltá el PDF del presupuesto y tocá enviar."),
+        /* Zona de drop / selección */
+        !presupFile?React.createElement("div",{
+            onClick:function(){if(presupFileInputRef.current)presupFileInputRef.current.click()},
+            onDragOver:function(e){e.preventDefault()},
+            onDrop:function(e){e.preventDefault();var f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)handlePresupFile(f)},
+            style:{border:"2px dashed "+T.border,borderRadius:12,padding:"30px 16px",textAlign:"center",cursor:"pointer",background:T.bg2}},
+            React.createElement(Icon,{name:"FileText",size:32,color:T.t4}),
+            React.createElement("div",{style:{fontSize:14,fontWeight:600,color:T.t2,marginTop:8}},"Arrastrá el presupuesto acá"),
+            React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:2}},"o hacé clic para elegirlo · solo PDF")
+          ):React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:presupFileUrl?"#1D9E7515":T.bg2,borderRadius:10,border:"1px solid "+(presupFileUrl?"#1D9E7544":T.border)}},
+            React.createElement(Icon,{name:presupFileUrl?"FileText":"Clock",size:20,color:presupFileUrl?"#1D9E75":T.t4}),
+            React.createElement("div",{style:{flex:1,minWidth:0}},
+              React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},presupFile.name),
+              React.createElement("div",{style:{fontSize:11,color:presupFileUrl?"#1D9E75":T.t4}},presupUploading?"Cargando…":(presupFileUrl?"Listo para enviar":"Error"))),
+            !presupSending&&React.createElement("button",{onClick:function(){setPresupFile(null);setPresupFileUrl(null)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:16}))),
+        React.createElement("input",{ref:presupFileInputRef,type:"file",accept:"application/pdf,.pdf",style:{display:"none"},onChange:function(e){var f=e.target.files&&e.target.files[0];if(f)handlePresupFile(f)}}),
+        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:20}},
+          React.createElement("button",{onClick:closePresupModal,disabled:presupSending,style:{fontSize:13,fontWeight:600,padding:"9px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:presupSending?"default":"pointer",fontFamily:"inherit",opacity:presupSending?0.5:1}},"Cancelar"),
+          React.createElement("button",{onClick:handleSendPresup,disabled:!presupFileUrl||presupSending||presupUploading,style:{fontSize:13,fontWeight:700,padding:"9px 18px",borderRadius:8,border:"none",background:(!presupFileUrl||presupSending||presupUploading)?T.t4:"#1D9E75",color:"#fff",cursor:(!presupFileUrl||presupSending||presupUploading)?"default":"pointer",fontFamily:"inherit",opacity:(!presupFileUrl||presupSending||presupUploading)?0.5:1,display:"flex",alignItems:"center",gap:6}},
+            React.createElement(Icon,{name:"Send",size:14,color:"#fff"}),presupSending?"Enviando…":"Enviar ahora"))
+      )),
+
     showTemplateModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget)closeTemplateModal()}},
       React.createElement("div",{style:{background:T.card,borderRadius:14,padding:26,width:"100%",maxWidth:520,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.6)",border:"1px solid "+T.border}},
         React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}},
