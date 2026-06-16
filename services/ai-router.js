@@ -275,7 +275,7 @@ async function classifyMessage(messageText, conversationHistory) {
 
   try {
     var res = await callAnthropic({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 150,
       messages: [{ role: "user", content: prompt }]
     });
@@ -339,7 +339,7 @@ async function generateSuggestion(contact, messages) {
 
   try {
     var res = await callAnthropic({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 300,
       messages: [{ role: "user", content: prompt }]
     });
@@ -463,7 +463,7 @@ async function generateAutoReply(contact, messages) {
 
   try {
     var res = await callAnthropic({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 600,
       messages: [{ role: "user", content: prompt }]
     });
@@ -536,7 +536,7 @@ async function generateFollowup(contact, messages) {
 
   try {
     var res = await callAnthropic({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 200,
       messages: [{ role: "user", content: prompt }]
     });
@@ -576,7 +576,7 @@ async function generateFicha(contact, messages) {
 
   try {
     var res = await callAnthropic({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 500,
       messages: [{ role: "user", content: prompt }]
     });
