@@ -920,6 +920,225 @@ router.get("/metrics", function(req, res) {
 });
 
 // ============================================
+// VENTANA 24HS WHATSAPP
+// ============================================
+
+// Devuelve si la ventana de 24hs esta abierta para enviar mensajes free-form
+// a un contacto de WhatsApp. La ventana se abre cuando el contacto nos escribe
+// y se cierra 24hs despues del ultimo mensaje entrante.
+function checkWhatsappWindow(db, contactId) {
+  var row = db.prepare(
+    "SELECT MAX(created_at) as last FROM messages WHERE contact_id = ? AND direction = 'incoming'"
+  ).get(contactId);
+  if (!row || !row.last) return { open: false, lastIncomingAt: null, hoursSince: null };
+  var ts = new Date(String(row.last).replace(" ", "T") + "Z");
+  var hoursSince = (Date.now() - ts.getTime()) / (1000 * 60 * 60);
+  return { open: hoursSince < 24, lastIncomingAt: row.last, hoursSince: hoursSince };
+}
+
+router.get("/contacts/:id/whatsapp-window", function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT id FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  res.json(checkWhatsappWindow(db, contact.id));
+});
+
+// Helper: convierte una URL relativa (/api/media/xxx) o absoluta a URL publica
+function toPublicUrl(req, mediaUrl) {
+  if (!mediaUrl) return null;
+  if (mediaUrl.indexOf("http") === 0) return mediaUrl;
+  var base = process.env.RAILWAY_PUBLIC_DOMAIN
+    ? "https://" + process.env.RAILWAY_PUBLIC_DOMAIN
+    : (req.protocol + "://" + req.get("host"));
+  return base + mediaUrl;
+}
+
+// Helper: dado un mediaUrl tipo "/api/media/<filename>", devuelve el path absoluto en disco
+function mediaUrlToDiskPath(mediaUrl) {
+  if (!mediaUrl) return null;
+  var fname = mediaUrl.replace(/^\/api\/media\//, "").split("?")[0];
+  var safe = fname.replace(/[^a-zA-Z0-9._\-=:]/g, "");
+  if (safe.indexOf("..") !== -1) return null;
+  return path.join(MEDIA_DIR, safe);
+}
+
+// Helper: fusiona varios PDFs (rutas en disco) en uno solo. Devuelve { filename, mediaUrl }
+async function mergePdfFiles(diskPaths, outputBasename) {
+  var PDFDocument = require("pdf-lib").PDFDocument;
+  var merged = await PDFDocument.create();
+  for (var i = 0; i < diskPaths.length; i++) {
+    var bytes = fs.readFileSync(diskPaths[i]);
+    var doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    var pages = await merged.copyPages(doc, doc.getPageIndices());
+    for (var j = 0; j < pages.length; j++) merged.addPage(pages[j]);
+  }
+  var outBytes = await merged.save();
+  var outName = "merged_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8) + ".pdf";
+  var outPath = path.join(MEDIA_DIR, outName);
+  fs.writeFileSync(outPath, outBytes);
+  return { filename: outName, mediaUrl: "/api/media/" + outName, originalName: outputBasename || "Documentacion.pdf" };
+}
+
+// ============================================
+// ENVIAR DOCUMENTACION (varios PDF unidos)
+// Plantilla: envio_documentacion, header: document, {{1}} = nombre cliente
+// ============================================
+
+router.post("/contacts/:id/send-documentation", async function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  if (contact.channel !== "whatsapp") return res.status(400).json({ error: "Solo funciona para WhatsApp" });
+
+  var attachments = req.body.attachments || []; // [{url, filename}]
+  var agentName = req.body.agent_name || "Agente";
+  var templateName = req.body.template_name || "envio_documentacion";
+  var languageCode = req.body.language_code || "es";
+
+  if (!Array.isArray(attachments) || attachments.length === 0) {
+    return res.status(400).json({ error: "Tenes que adjuntar al menos un PDF" });
+  }
+
+  // Resolver rutas en disco
+  var diskPaths = [];
+  for (var i = 0; i < attachments.length; i++) {
+    var p = mediaUrlToDiskPath(attachments[i].url);
+    if (!p || !fs.existsSync(p)) {
+      return res.status(400).json({ error: "Archivo no encontrado en el servidor: " + (attachments[i].filename || attachments[i].url) });
+    }
+    diskPaths.push(p);
+  }
+
+  // Fusionar PDFs (si es uno solo, igual lo re-escribimos para mantener un solo flujo)
+  var mergedInfo;
+  try {
+    var baseName = (attachments.length === 1 && attachments[0].filename)
+      ? attachments[0].filename
+      : "Documentacion_" + (contact.name || "cliente").replace(/[^a-zA-Z0-9_\- ]/g, "_") + ".pdf";
+    mergedInfo = await mergePdfFiles(diskPaths, baseName);
+  } catch (err) {
+    console.error("[DOCUMENTACION] Error fusionando PDFs:", err.message);
+    return res.status(500).json({ error: "No se pudieron fusionar los PDFs: " + err.message });
+  }
+
+  var publicUrl = toPublicUrl(req, mergedInfo.mediaUrl);
+  var nombreCliente = (contact.name || "").trim() || "Estimado/a";
+
+  var headerMedia = { type: "document", url: publicUrl, filename: mergedInfo.originalName };
+  var sendResult = await whatsapp.sendTemplate(
+    contact.channel_id,
+    templateName,
+    languageCode,
+    [nombreCliente],
+    headerMedia,
+    contact.phone_line || 1
+  );
+
+  var contentToSave = "[Plantilla: " + templateName + "] " + nombreCliente + " [Adjunto: " + mergedInfo.originalName + " (" + attachments.length + " archivo" + (attachments.length > 1 ? "s unidos" : "") + ")]";
+  var insertRes = db.prepare(
+    "INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, original_filename, status) VALUES (?, 'outgoing', ?, ?, ?, 'file', ?, ?, 'pending')"
+  ).run(contact.id, contentToSave, contact.channel, agentName, mergedInfo.mediaUrl, mergedInfo.originalName);
+
+  pauseAiForContact(db, contact.id, agentName);
+  updateMessageStatus(db, insertRes.lastInsertRowid, sendResult);
+
+  var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(insertRes.lastInsertRowid);
+  console.log("[DOCUMENTACION] " + agentName + " envio " + attachments.length + " archivos unidos a " + contact.name + " | Exito: " + sendResult.success);
+  res.json({ message: message, sendResult: sendResult, merged: mergedInfo });
+});
+
+// ============================================
+// PEDIR COTIZACION A PROVEEDOR
+// Texto descriptivo OBLIGATORIO + adjuntos opcionales (0..n, PDF o imagenes).
+// Si la ventana de 24hs esta cerrada, primero se envia la plantilla
+// `pedido_cotizacion` (solo texto, {{1}} = nombre del proveedor) y despues
+// el texto + adjuntos por la API normal.
+// ============================================
+
+router.post("/contacts/:id/send-supplier-request", async function(req, res) {
+  var db = getDb();
+  var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
+  if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+  if (contact.channel !== "whatsapp") return res.status(400).json({ error: "Solo funciona para WhatsApp" });
+
+  var text = (req.body.text || "").trim();
+  var attachments = req.body.attachments || []; // [{url, filename, mediaType}]
+  var agentName = req.body.agent_name || "Agente";
+  var templateName = req.body.template_name || "pedido_cotizacion";
+  var languageCode = req.body.language_code || "es";
+
+  if (!text) return res.status(400).json({ error: "El texto descriptivo es obligatorio" });
+
+  var windowStatus = checkWhatsappWindow(db, contact.id);
+  var phoneLine = contact.phone_line || 1;
+  var steps = [];
+  var allOk = true;
+  var templateResult = null;
+
+  pauseAiForContact(db, contact.id, agentName);
+
+  // 1) Si la ventana esta cerrada, primero la plantilla
+  if (!windowStatus.open) {
+    var nombreProveedor = (contact.name || "").trim() || "Proveedor";
+    templateResult = await whatsapp.sendTemplate(
+      contact.channel_id,
+      templateName,
+      languageCode,
+      [nombreProveedor],
+      null, // sin header
+      phoneLine
+    );
+    var tplContent = "[Plantilla: " + templateName + "] " + nombreProveedor;
+    var tplIns = db.prepare(
+      "INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, ?, 'pending')"
+    ).run(contact.id, tplContent, contact.channel, agentName);
+    updateMessageStatus(db, tplIns.lastInsertRowid, templateResult);
+    steps.push({ type: "template", result: templateResult });
+    if (!templateResult.success) allOk = false;
+  }
+
+  // 2) Texto descriptivo via API normal
+  var textResult = await whatsapp.sendMessage(contact.channel_id, text, phoneLine);
+  var textIns = db.prepare(
+    "INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, ?, 'pending')"
+  ).run(contact.id, text, contact.channel, agentName);
+  updateMessageStatus(db, textIns.lastInsertRowid, textResult);
+  steps.push({ type: "text", result: textResult });
+  if (!textResult.success) allOk = false;
+
+  // 3) Adjuntos (uno por uno)
+  var attachmentResults = [];
+  for (var i = 0; i < attachments.length; i++) {
+    var att = attachments[i];
+    var attUrl = toPublicUrl(req, att.url);
+    var mt = att.mediaType || "file"; // "image" | "file"
+    var captionForFirst = null; // ya enviamos el texto antes, no repetir
+    var attRes = await whatsapp.sendMedia(contact.channel_id, mt, attUrl, captionForFirst, phoneLine, att.filename);
+
+    var localMediaType = mt === "image" ? "image" : "file";
+    var attContent = att.filename ? "[" + (localMediaType === "image" ? "Imagen" : "Archivo") + ": " + att.filename + "]" : (localMediaType === "image" ? "[Imagen]" : "[Archivo]");
+    var attIns = db.prepare(
+      "INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, original_filename, status) VALUES (?, 'outgoing', ?, ?, ?, ?, ?, ?, 'pending')"
+    ).run(contact.id, attContent, contact.channel, agentName, localMediaType, att.url, att.filename || null);
+    updateMessageStatus(db, attIns.lastInsertRowid, attRes);
+    attachmentResults.push({ filename: att.filename, result: attRes });
+    if (!attRes.success) allOk = false;
+  }
+
+  console.log("[COTIZACION-PROV] " + agentName + " -> " + contact.name + " | ventana: " + (windowStatus.open ? "abierta" : "cerrada") + " | adjuntos: " + attachments.length + " | exito: " + allOk);
+
+  res.json({
+    success: allOk,
+    windowWasOpen: windowStatus.open,
+    hoursSinceLastIncoming: windowStatus.hoursSince,
+    templateResult: templateResult,
+    textResult: textResult,
+    attachmentResults: attachmentResults,
+    steps: steps
+  });
+});
+
+// ============================================
 // PRESUPUESTOS
 // ============================================
 

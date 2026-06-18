@@ -570,14 +570,30 @@ function App(){
   var _tmfu=useState(null);var tmFileUrlVal=_tmfu[0];var setTmFileUrl=_tmfu[1];
   var _tmsd=useState(false);var tmSendingVal=_tmsd[0];var setTmSending=_tmsd[1];
   var tmFileInputRef=useRef(null);
-  /* Modal dedicado "Enviar presupuesto" (APB: un solo PDF, sin elegir plantilla) */
+  /* Modal "Enviar presupuesto" (APB: VARIOS PDF, cada uno como mensaje separado con la misma plantilla) */
   var _pmsh=useState(false);var showPresupModal=_pmsh[0];var setShowPresupModal=_pmsh[1];
-  var _pmfl=useState(null);var presupFile=_pmfl[0];var setPresupFile=_pmfl[1];
-  var _pmfu=useState(null);var presupFileUrl=_pmfu[0];var setPresupFileUrl=_pmfu[1];
-  var _pmup=useState(false);var presupUploading=_pmup[0];var setPresupUploading=_pmup[1];
+  /* presupFiles: array de {id, file, url, uploading, error} */
+  var _pmfs=useState([]);var presupFiles=_pmfs[0];var setPresupFiles=_pmfs[1];
   var _pmsd=useState(false);var presupSending=_pmsd[0];var setPresupSending=_pmsd[1];
+  var _pmpr=useState({sent:0,total:0});var presupProgress=_pmpr[0];var setPresupProgress=_pmpr[1];
   var presupFileInputRef=useRef(null);
   var PRESUP_TEMPLATE="envio_presupuesto_pdf"; /* nombre exacto de la plantilla aprobada con header de documento */
+
+  /* Modal "Enviar documentación" (varios PDF unidos en uno solo en el backend) */
+  var _dmsh=useState(false);var showDocModal=_dmsh[0];var setShowDocModal=_dmsh[1];
+  var _dmfs=useState([]);var docFiles=_dmfs[0];var setDocFiles=_dmfs[1];
+  var _dmsd=useState(false);var docSending=_dmsd[0];var setDocSending=_dmsd[1];
+  var docFileInputRef=useRef(null);
+  var DOC_TEMPLATE="envio_documentacion"; /* plantilla con header de documento, {{1}}=nombre cliente */
+
+  /* Modal "Pedir cotización" a proveedor (texto + 0..n adjuntos PDF/imagen) */
+  var _smsh=useState(false);var showSupModal=_smsh[0];var setShowSupModal=_smsh[1];
+  var _smtx=useState("");var supText=_smtx[0];var setSupText=_smtx[1];
+  var _smfs=useState([]);var supFiles=_smfs[0];var setSupFiles=_smfs[1];
+  var _smsd=useState(false);var supSending=_smsd[0];var setSupSending=_smsd[1];
+  var _smwd=useState(null);var supWindow=_smwd[0];var setSupWindow=_smwd[1]; /* {open, lastIncomingAt, hoursSince} */
+  var supFileInputRef=useRef(null);
+  var SUP_TEMPLATE="pedido_cotizacion"; /* plantilla sin header, {{1}}=nombre proveedor */
 
   var loggedIn=!!user;
 
@@ -739,50 +755,198 @@ function App(){
     }catch(err){alert("Error: "+err.message)}
     setTmSending(false);
   };
-  /* ── ENVIAR PRESUPUESTO (botón directo APB) ──────── */
+  /* ── HELPER: subir un archivo a /templates/upload-attachment ──────── */
+  var uploadAttachment=async function(file){
+    var formData=new FormData();formData.append("file",file);
+    var res=await fetch(API+"/templates/upload-attachment",{method:"POST",body:formData});
+    var data=await res.json();
+    if(!res.ok||!data.url)throw new Error(data.error||"Error subiendo archivo");
+    return data; /* {url, filename, originalName, size, publicUrl} */
+  };
+  var nextLocalId=(function(){var n=0;return function(){n++;return "f_"+Date.now()+"_"+n}})();
+
+  /* ── ENVIAR PRESUPUESTO (varios PDF, un mensaje por archivo) ──────── */
   var openPresupModal=function(){
     if(!selected||selected.channel!=="whatsapp"){alert("El envío de presupuesto solo funciona en chats de WhatsApp");return}
-    setPresupFile(null);setPresupFileUrl(null);setPresupUploading(false);setPresupSending(false);
+    setPresupFiles([]);setPresupSending(false);setPresupProgress({sent:0,total:0});
     setShowPresupModal(true);
   };
-  var closePresupModal=function(){setShowPresupModal(false);setPresupFile(null);setPresupFileUrl(null);setPresupUploading(false);setPresupSending(false)};
-  var handlePresupFile=async function(file){
-    if(!file)return;
-    if(file.type!=="application/pdf"&&(file.name||"").toLowerCase().indexOf(".pdf")===-1){alert("El presupuesto tiene que ser un archivo PDF");return}
-    setPresupFile(file);setPresupUploading(true);setPresupFileUrl(null);
-    var formData=new FormData();formData.append("file",file);
-    try{
-      var res=await fetch(API+"/templates/upload-attachment",{method:"POST",body:formData});
-      var data=await res.json();
-      if(res.ok&&data.url){setPresupFileUrl(data.url)}
-      else{alert(data.error||"No se pudo subir el PDF");setPresupFile(null)}
-    }catch(e){alert("Error subiendo el PDF: "+e.message);setPresupFile(null)}
-    setPresupUploading(false);
+  var closePresupModal=function(){if(presupSending)return;setShowPresupModal(false);setPresupFiles([]);setPresupProgress({sent:0,total:0})};
+  var addPresupFiles=async function(fileList){
+    if(!fileList||fileList.length===0)return;
+    var newOnes=[];
+    for(var i=0;i<fileList.length;i++){
+      var f=fileList[i];
+      if(f.type!=="application/pdf"&&(f.name||"").toLowerCase().indexOf(".pdf")===-1){alert("Solo PDF: \""+f.name+"\"");continue}
+      newOnes.push({id:nextLocalId(),file:f,url:null,uploading:true,error:null});
+    }
+    if(newOnes.length===0)return;
+    setPresupFiles(function(prev){return prev.concat(newOnes)});
+    /* subir en paralelo */
+    for(var k=0;k<newOnes.length;k++){
+      (function(item){
+        uploadAttachment(item.file).then(function(data){
+          setPresupFiles(function(prev){return prev.map(function(p){return p.id===item.id?Object.assign({},p,{url:data.url,uploading:false}):p})});
+        }).catch(function(err){
+          setPresupFiles(function(prev){return prev.map(function(p){return p.id===item.id?Object.assign({},p,{uploading:false,error:err.message}):p})});
+        });
+      })(newOnes[k]);
+    }
   };
+  var removePresupFile=function(id){setPresupFiles(function(prev){return prev.filter(function(p){return p.id!==id})})};
   var handleSendPresup=async function(){
-    if(!presupFileUrl){alert("Esperá a que termine de cargar el PDF");return}
+    if(presupFiles.length===0){alert("Agregá al menos un PDF");return}
+    if(presupFiles.some(function(p){return p.uploading})){alert("Esperá a que terminen de cargar los PDFs");return}
+    if(presupFiles.some(function(p){return !p.url})){alert("Hay PDFs con error de carga. Quitalos o recargalos");return}
     setPresupSending(true);
-    /* {{1}} = nombre del cliente (del contacto); {{2}} = nombre del empleado logueado (firma) */
     var nombreCliente=(selected.name||"").trim()||"Estimado/a";
     var nombreVendedor=(user&&user.name?user.name:"Aberturas Windows").trim();
+    setPresupProgress({sent:0,total:presupFiles.length});
+    var failures=[];
+    for(var i=0;i<presupFiles.length;i++){
+      var p=presupFiles[i];
+      try{
+        var res=await fetch(API+"/contacts/"+selected.id+"/send-template",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+          template_name:PRESUP_TEMPLATE,
+          language_code:"es",
+          body_params:[nombreCliente,nombreVendedor],
+          attachment_url:p.url,
+          attachment_type:"document",
+          attachment_filename:p.file?p.file.name:"Presupuesto.pdf",
+          agent_name:user.name
+        })});
+        var data=await res.json();
+        if(!data.sendResult||!data.sendResult.success){
+          failures.push(p.file.name+": "+((data.sendResult&&data.sendResult.error)||data.error||"error"));
+        }
+      }catch(err){failures.push(p.file.name+": "+err.message)}
+      setPresupProgress({sent:i+1,total:presupFiles.length});
+      loadMessages(selected.id);
+    }
+    loadContacts();
+    if(failures.length===0){
+      setShowPresupModal(false);setPresupFiles([]);setPresupSending(false);setPresupProgress({sent:0,total:0});
+    }else{
+      alert("Algunos presupuestos no se enviaron:\n\n"+failures.join("\n"));
+      setPresupSending(false);
+    }
+  };
+
+  /* ── ENVIAR DOCUMENTACIÓN (varios PDF unidos en uno) ──────── */
+  var openDocModal=function(){
+    if(!selected||selected.channel!=="whatsapp"){alert("Solo funciona en chats de WhatsApp");return}
+    setDocFiles([]);setDocSending(false);setShowDocModal(true);
+  };
+  var closeDocModal=function(){if(docSending)return;setShowDocModal(false);setDocFiles([])};
+  var addDocFiles=async function(fileList){
+    if(!fileList||fileList.length===0)return;
+    var newOnes=[];
+    for(var i=0;i<fileList.length;i++){
+      var f=fileList[i];
+      if(f.type!=="application/pdf"&&(f.name||"").toLowerCase().indexOf(".pdf")===-1){alert("Solo PDF: \""+f.name+"\"");continue}
+      newOnes.push({id:nextLocalId(),file:f,url:null,uploading:true,error:null});
+    }
+    if(newOnes.length===0)return;
+    setDocFiles(function(prev){return prev.concat(newOnes)});
+    for(var k=0;k<newOnes.length;k++){
+      (function(item){
+        uploadAttachment(item.file).then(function(data){
+          setDocFiles(function(prev){return prev.map(function(p){return p.id===item.id?Object.assign({},p,{url:data.url,uploading:false}):p})});
+        }).catch(function(err){
+          setDocFiles(function(prev){return prev.map(function(p){return p.id===item.id?Object.assign({},p,{uploading:false,error:err.message}):p})});
+        });
+      })(newOnes[k]);
+    }
+  };
+  var removeDocFile=function(id){setDocFiles(function(prev){return prev.filter(function(p){return p.id!==id})})};
+  var moveDocFile=function(id,dir){
+    setDocFiles(function(prev){
+      var idx=-1;for(var i=0;i<prev.length;i++)if(prev[i].id===id){idx=i;break}
+      if(idx<0)return prev;var ni=idx+dir;if(ni<0||ni>=prev.length)return prev;
+      var arr=prev.slice();var tmp=arr[idx];arr[idx]=arr[ni];arr[ni]=tmp;return arr;
+    });
+  };
+  var handleSendDoc=async function(){
+    if(docFiles.length===0){alert("Agregá al menos un PDF");return}
+    if(docFiles.some(function(p){return p.uploading})){alert("Esperá a que terminen de cargar los PDFs");return}
+    if(docFiles.some(function(p){return !p.url})){alert("Hay PDFs con error de carga. Quitalos o recargalos");return}
+    setDocSending(true);
     try{
-      var res=await fetch(API+"/contacts/"+selected.id+"/send-template",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-        template_name:PRESUP_TEMPLATE,
-        language_code:"es",
-        body_params:[nombreCliente,nombreVendedor],
-        attachment_url:presupFileUrl,
-        attachment_type:"document",
-        attachment_filename:presupFile?presupFile.name:"Presupuesto.pdf",
-        agent_name:user.name
+      var attachments=docFiles.map(function(p){return {url:p.url,filename:p.file.name}});
+      var res=await fetch(API+"/contacts/"+selected.id+"/send-documentation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        attachments:attachments,agent_name:user.name
       })});
       var data=await res.json();
       if(data.sendResult&&data.sendResult.success){
-        closePresupModal();loadMessages(selected.id);loadContacts();
+        setShowDocModal(false);setDocFiles([]);setDocSending(false);
+        loadMessages(selected.id);loadContacts();
       }else{
-        alert("No se pudo enviar el presupuesto: "+((data.sendResult&&data.sendResult.error)||data.error||"error desconocido"));
-        setPresupSending(false);
+        var msg=(data.sendResult&&data.sendResult.error)||data.error||"error desconocido";
+        alert("No se pudo enviar la documentación: "+msg+"\n\nRecordá que la plantilla \""+DOC_TEMPLATE+"\" debe estar aprobada en Meta.");
+        setDocSending(false);
       }
-    }catch(err){alert("Error: "+err.message);setPresupSending(false)}
+    }catch(err){alert("Error: "+err.message);setDocSending(false)}
+  };
+
+  /* ── PEDIR COTIZACIÓN A PROVEEDOR (texto + adjuntos opcionales) ──────── */
+  var openSupModal=async function(){
+    if(!selected||selected.channel!=="whatsapp"){alert("Solo funciona en chats de WhatsApp");return}
+    setSupText("");setSupFiles([]);setSupSending(false);setSupWindow(null);
+    setShowSupModal(true);
+    try{
+      var r=await fetch(API+"/contacts/"+selected.id+"/whatsapp-window");
+      var d=await r.json();setSupWindow(d);
+    }catch(e){setSupWindow({open:false,lastIncomingAt:null,hoursSince:null})}
+  };
+  var closeSupModal=function(){if(supSending)return;setShowSupModal(false);setSupText("");setSupFiles([])};
+  var addSupFiles=async function(fileList){
+    if(!fileList||fileList.length===0)return;
+    var newOnes=[];
+    var allowedExts=[".pdf",".jpg",".jpeg",".png",".webp",".gif",".heic"];
+    for(var i=0;i<fileList.length;i++){
+      var f=fileList[i];var nm=(f.name||"").toLowerCase();var ext="";
+      for(var e=0;e<allowedExts.length;e++)if(nm.indexOf(allowedExts[e])===nm.length-allowedExts[e].length){ext=allowedExts[e];break}
+      if(!ext){alert("Solo PDF o imágenes: \""+f.name+"\"");continue}
+      var mediaType=ext===".pdf"?"file":"image";
+      newOnes.push({id:nextLocalId(),file:f,url:null,uploading:true,error:null,mediaType:mediaType});
+    }
+    if(newOnes.length===0)return;
+    setSupFiles(function(prev){return prev.concat(newOnes)});
+    for(var k=0;k<newOnes.length;k++){
+      (function(item){
+        uploadAttachment(item.file).then(function(data){
+          setSupFiles(function(prev){return prev.map(function(p){return p.id===item.id?Object.assign({},p,{url:data.url,uploading:false}):p})});
+        }).catch(function(err){
+          setSupFiles(function(prev){return prev.map(function(p){return p.id===item.id?Object.assign({},p,{uploading:false,error:err.message}):p})});
+        });
+      })(newOnes[k]);
+    }
+  };
+  var removeSupFile=function(id){setSupFiles(function(prev){return prev.filter(function(p){return p.id!==id})})};
+  var handleSendSup=async function(){
+    if(!supText.trim()){alert("Escribí el detalle del pedido");return}
+    if(supFiles.some(function(p){return p.uploading})){alert("Esperá a que terminen de cargar los adjuntos");return}
+    if(supFiles.some(function(p){return !p.url})){alert("Hay adjuntos con error. Quitalos o recargalos");return}
+    setSupSending(true);
+    try{
+      var attachments=supFiles.map(function(p){return {url:p.url,filename:p.file.name,mediaType:p.mediaType}});
+      var res=await fetch(API+"/contacts/"+selected.id+"/send-supplier-request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        text:supText.trim(),attachments:attachments,agent_name:user.name
+      })});
+      var data=await res.json();
+      if(data.success){
+        setShowSupModal(false);setSupText("");setSupFiles([]);setSupSending(false);
+        loadMessages(selected.id);loadContacts();
+      }else{
+        var details=[];
+        if(data.templateResult&&!data.templateResult.success)details.push("Plantilla: "+(data.templateResult.error||"error"));
+        if(data.textResult&&!data.textResult.success)details.push("Texto: "+(data.textResult.error||"error"));
+        if(data.attachmentResults){data.attachmentResults.forEach(function(a){if(a.result&&!a.result.success)details.push((a.filename||"adjunto")+": "+(a.result.error||"error"))})}
+        alert("Algunas partes fallaron:\n\n"+(details.length?details.join("\n"):(data.error||"error desconocido"))+(data.windowWasOpen===false?"\n\nLa ventana de 24hs estaba cerrada. La plantilla \""+SUP_TEMPLATE+"\" debe estar aprobada en Meta y el proveedor debe responder para poder enviarle texto/adjuntos por API.":""));
+        setSupSending(false);
+        loadMessages(selected.id);
+      }
+    }catch(err){alert("Error: "+err.message);setSupSending(false)}
   };
   var resetQuoteForm=function(){setQfContactId("");setQfDesc("");setQfAmount("");setQfStatus("pendiente");setQfCreatedBy(user.name);setQfReceivedAt("");setQfDeliveryDate("");setQfFollowupDate("");setQfNotes("");setQfAlternatives(1);setEditingQuote(null)};
   var openNewQuote=function(contactId){resetQuoteForm();if(contactId)setQfContactId(String(contactId));setQfCreatedBy(user.name);setShowQuoteForm(true)};
@@ -944,6 +1108,12 @@ function App(){
               selected.channel==="whatsapp"&&React.createElement("button",{onClick:openPresupModal,
                 style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"none",background:"#1D9E75",color:"#fff",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}},
                 React.createElement(Icon,{name:"FileText",size:13,color:"#fff"}),"Enviar presupuesto"),
+              selected.channel==="whatsapp"&&React.createElement("button",{onClick:openDocModal,title:"Enviar facturas, recibos, etc. (se unen en un PDF)",
+                style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid "+T.blue+"55",background:T.blue+"15",color:T.blue,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}},
+                React.createElement(Icon,{name:"Paperclip",size:13,color:T.blue}),"Enviar documentación"),
+              selected.channel==="whatsapp"&&React.createElement("button",{onClick:openSupModal,title:"Pedir cotización a un proveedor",
+                style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid "+T.amber+"55",background:T.amberBg,color:T.amber,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}},
+                React.createElement(Icon,{name:"Send",size:13,color:T.amber}),"Pedir cotización"),
               selected.channel==="whatsapp"&&React.createElement("button",{onClick:openTemplateModalExisting,
                 style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid #25D36633",background:"#25D36608",color:"#25D366",cursor:"pointer",fontFamily:"inherit"}},
                 "📋 Plantilla"),
@@ -1380,33 +1550,117 @@ function App(){
     lightbox&&React.createElement(Lightbox,{items:lightbox.items,startIndex:lightbox.startIndex,onClose:function(){setLightbox(null)}}),
 
     /* ── TEMPLATE MODAL (100% original logic) ── */
-    /* ── MODAL ENVIAR PRESUPUESTO (APB) ──────── */
+    /* ── MODAL ENVIAR PRESUPUESTO (APB - varios PDF, uno por mensaje) ──────── */
     showPresupModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget&&!presupSending)closePresupModal()}},
-      React.createElement("div",{style:{background:T.bg1,border:"1px solid "+T.border,borderRadius:16,padding:24,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}},
+      React.createElement("div",{style:{background:T.card,border:"1px solid "+T.border,borderRadius:16,padding:24,width:"100%",maxWidth:480,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}},
         React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
           React.createElement("div",{style:{fontSize:16,fontWeight:800,color:T.t1}},"Enviar presupuesto"),
-          React.createElement("button",{onClick:closePresupModal,style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:18}))),
-        React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:18}},"Para ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||"el cliente"),". Soltá el PDF del presupuesto y tocá enviar."),
+          React.createElement("button",{onClick:closePresupModal,disabled:presupSending,style:{border:"none",background:"none",cursor:presupSending?"default":"pointer",color:T.t4,display:"flex",opacity:presupSending?0.4:1}},React.createElement(Icon,{name:"X",size:18}))),
+        React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:14}},"Para ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||"el cliente"),". Podés agregar varios PDF: cada uno se envía como un mensaje separado con la plantilla aprobada."),
         /* Zona de drop / selección */
-        !presupFile?React.createElement("div",{
-            onClick:function(){if(presupFileInputRef.current)presupFileInputRef.current.click()},
+        React.createElement("div",{
+            onClick:function(){if(!presupSending&&presupFileInputRef.current)presupFileInputRef.current.click()},
             onDragOver:function(e){e.preventDefault()},
-            onDrop:function(e){e.preventDefault();var f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)handlePresupFile(f)},
-            style:{border:"2px dashed "+T.border,borderRadius:12,padding:"30px 16px",textAlign:"center",cursor:"pointer",background:T.bg2}},
-            React.createElement(Icon,{name:"FileText",size:32,color:T.t4}),
-            React.createElement("div",{style:{fontSize:14,fontWeight:600,color:T.t2,marginTop:8}},"Arrastrá el presupuesto acá"),
-            React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:2}},"o hacé clic para elegirlo · solo PDF")
-          ):React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:presupFileUrl?"#1D9E7515":T.bg2,borderRadius:10,border:"1px solid "+(presupFileUrl?"#1D9E7544":T.border)}},
-            React.createElement(Icon,{name:presupFileUrl?"FileText":"Clock",size:20,color:presupFileUrl?"#1D9E75":T.t4}),
-            React.createElement("div",{style:{flex:1,minWidth:0}},
-              React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},presupFile.name),
-              React.createElement("div",{style:{fontSize:11,color:presupFileUrl?"#1D9E75":T.t4}},presupUploading?"Cargando…":(presupFileUrl?"Listo para enviar":"Error"))),
-            !presupSending&&React.createElement("button",{onClick:function(){setPresupFile(null);setPresupFileUrl(null)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:16}))),
-        React.createElement("input",{ref:presupFileInputRef,type:"file",accept:"application/pdf,.pdf",style:{display:"none"},onChange:function(e){var f=e.target.files&&e.target.files[0];if(f)handlePresupFile(f)}}),
-        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:20}},
+            onDrop:function(e){e.preventDefault();if(!presupSending)addPresupFiles(e.dataTransfer.files)},
+            style:{border:"2px dashed "+T.border,borderRadius:12,padding:"22px 16px",textAlign:"center",cursor:presupSending?"default":"pointer",background:T.bg2,marginBottom:12,opacity:presupSending?0.5:1}},
+            React.createElement(Icon,{name:"FileText",size:28,color:T.t4}),
+            React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t2,marginTop:6}},"Arrastrá uno o varios PDF acá"),
+            React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},"o hacé clic para elegirlos · solo PDF · cada PDF se envía como un mensaje aparte")),
+        React.createElement("input",{ref:presupFileInputRef,type:"file",accept:"application/pdf,.pdf",multiple:true,style:{display:"none"},onChange:function(e){addPresupFiles(e.target.files);e.target.value=""}}),
+        /* Lista de archivos cargados */
+        presupFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:12,maxHeight:240,overflowY:"auto"}},
+          presupFiles.map(function(p,idx){
+            var statusColor=p.error?T.red:(p.uploading?T.t4:"#1D9E75");
+            return React.createElement("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:p.error?T.redBg:(p.url?"#1D9E7510":T.bg2),borderRadius:10,border:"1px solid "+(p.error?T.red+"44":(p.url?"#1D9E7544":T.border))}},
+              React.createElement("div",{style:{fontSize:11,fontWeight:700,color:T.t4,width:18,textAlign:"center"}},idx+1),
+              React.createElement(Icon,{name:p.uploading?"Clock":(p.error?"X":"FileText"),size:18,color:statusColor}),
+              React.createElement("div",{style:{flex:1,minWidth:0}},
+                React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},p.file.name),
+                React.createElement("div",{style:{fontSize:10,color:statusColor}},p.uploading?"Cargando…":(p.error?("Error: "+p.error):"Listo"))),
+              !presupSending&&React.createElement("button",{onClick:function(){removePresupFile(p.id)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:14})));
+          })),
+        presupSending&&presupProgress.total>0&&React.createElement("div",{style:{fontSize:12,color:T.t3,marginBottom:10,textAlign:"center"}},"Enviando "+presupProgress.sent+" de "+presupProgress.total+"…"),
+        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:6}},
           React.createElement("button",{onClick:closePresupModal,disabled:presupSending,style:{fontSize:13,fontWeight:600,padding:"9px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:presupSending?"default":"pointer",fontFamily:"inherit",opacity:presupSending?0.5:1}},"Cancelar"),
-          React.createElement("button",{onClick:handleSendPresup,disabled:!presupFileUrl||presupSending||presupUploading,style:{fontSize:13,fontWeight:700,padding:"9px 18px",borderRadius:8,border:"none",background:(!presupFileUrl||presupSending||presupUploading)?T.t4:"#1D9E75",color:"#fff",cursor:(!presupFileUrl||presupSending||presupUploading)?"default":"pointer",fontFamily:"inherit",opacity:(!presupFileUrl||presupSending||presupUploading)?0.5:1,display:"flex",alignItems:"center",gap:6}},
-            React.createElement(Icon,{name:"Send",size:14,color:"#fff"}),presupSending?"Enviando…":"Enviar ahora"))
+          React.createElement("button",{onClick:handleSendPresup,disabled:presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}),style:{fontSize:13,fontWeight:700,padding:"9px 18px",borderRadius:8,border:"none",background:(presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}))?T.t4:"#1D9E75",color:"#fff",cursor:(presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}))?"default":"pointer",fontFamily:"inherit",opacity:(presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}))?0.5:1,display:"flex",alignItems:"center",gap:6}},
+            React.createElement(Icon,{name:"Send",size:14,color:"#fff"}),presupSending?"Enviando…":("Enviar "+(presupFiles.length>1?presupFiles.length+" presupuestos":"presupuesto"))))
+      )),
+
+    /* ── MODAL ENVIAR DOCUMENTACIÓN (varios PDF unidos) ──────── */
+    showDocModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget&&!docSending)closeDocModal()}},
+      React.createElement("div",{style:{background:T.card,border:"1px solid "+T.border,borderRadius:16,padding:24,width:"100%",maxWidth:480,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
+          React.createElement("div",{style:{fontSize:16,fontWeight:800,color:T.t1}},"Enviar documentación"),
+          React.createElement("button",{onClick:closeDocModal,disabled:docSending,style:{border:"none",background:"none",cursor:docSending?"default":"pointer",color:T.t4,display:"flex",opacity:docSending?0.4:1}},React.createElement(Icon,{name:"X",size:18}))),
+        React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:14}},"Para ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||"el cliente"),". Facturas, recibos, comprobantes. Si agregás varios PDF se unen en uno solo antes de enviar."),
+        React.createElement("div",{
+            onClick:function(){if(!docSending&&docFileInputRef.current)docFileInputRef.current.click()},
+            onDragOver:function(e){e.preventDefault()},
+            onDrop:function(e){e.preventDefault();if(!docSending)addDocFiles(e.dataTransfer.files)},
+            style:{border:"2px dashed "+T.border,borderRadius:12,padding:"22px 16px",textAlign:"center",cursor:docSending?"default":"pointer",background:T.bg2,marginBottom:12,opacity:docSending?0.5:1}},
+            React.createElement(Icon,{name:"Paperclip",size:28,color:T.t4}),
+            React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t2,marginTop:6}},"Arrastrá uno o varios PDF acá"),
+            React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},"o hacé clic para elegirlos · solo PDF · se unen en el orden que ves abajo")),
+        React.createElement("input",{ref:docFileInputRef,type:"file",accept:"application/pdf,.pdf",multiple:true,style:{display:"none"},onChange:function(e){addDocFiles(e.target.files);e.target.value=""}}),
+        docFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:12,maxHeight:240,overflowY:"auto"}},
+          docFiles.map(function(p,idx){
+            var statusColor=p.error?T.red:(p.uploading?T.t4:T.blue);
+            return React.createElement("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",background:p.error?T.redBg:(p.url?T.blue+"12":T.bg2),borderRadius:10,border:"1px solid "+(p.error?T.red+"44":(p.url?T.blue+"44":T.border))}},
+              React.createElement("div",{style:{fontSize:11,fontWeight:700,color:T.t4,width:18,textAlign:"center"}},idx+1),
+              React.createElement(Icon,{name:p.uploading?"Clock":(p.error?"X":"FileText"),size:18,color:statusColor}),
+              React.createElement("div",{style:{flex:1,minWidth:0}},
+                React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},p.file.name),
+                React.createElement("div",{style:{fontSize:10,color:statusColor}},p.uploading?"Cargando…":(p.error?("Error: "+p.error):"Listo"))),
+              !docSending&&React.createElement(React.Fragment,null,
+                idx>0&&React.createElement("button",{onClick:function(){moveDocFile(p.id,-1)},title:"Subir",style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex",padding:2,fontSize:11}},"▲"),
+                idx<docFiles.length-1&&React.createElement("button",{onClick:function(){moveDocFile(p.id,1)},title:"Bajar",style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex",padding:2,fontSize:11}},"▼"),
+                React.createElement("button",{onClick:function(){removeDocFile(p.id)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:14}))));
+          })),
+        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:6}},
+          React.createElement("button",{onClick:closeDocModal,disabled:docSending,style:{fontSize:13,fontWeight:600,padding:"9px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:docSending?"default":"pointer",fontFamily:"inherit",opacity:docSending?0.5:1}},"Cancelar"),
+          React.createElement("button",{onClick:handleSendDoc,disabled:docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}),style:{fontSize:13,fontWeight:700,padding:"9px 18px",borderRadius:8,border:"none",background:(docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}))?T.t4:T.blue,color:"#fff",cursor:(docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}))?"default":"pointer",fontFamily:"inherit",opacity:(docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}))?0.5:1,display:"flex",alignItems:"center",gap:6}},
+            React.createElement(Icon,{name:"Send",size:14,color:"#fff"}),docSending?"Enviando…":(docFiles.length>1?"Unir y enviar "+docFiles.length+" PDF":"Enviar documentación")))
+      )),
+
+    /* ── MODAL PEDIR COTIZACIÓN A PROVEEDOR (texto + adjuntos opcionales) ──────── */
+    showSupModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget&&!supSending)closeSupModal()}},
+      React.createElement("div",{style:{background:T.card,border:"1px solid "+T.border,borderRadius:16,padding:24,width:"100%",maxWidth:520,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
+          React.createElement("div",{style:{fontSize:16,fontWeight:800,color:T.t1}},"Pedir cotización"),
+          React.createElement("button",{onClick:closeSupModal,disabled:supSending,style:{border:"none",background:"none",cursor:supSending?"default":"pointer",color:T.t4,display:"flex",opacity:supSending?0.4:1}},React.createElement(Icon,{name:"X",size:18}))),
+        React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:12}},"Para proveedor ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||""),"."),
+        /* Estado de ventana 24hs */
+        supWindow===null
+          ?React.createElement("div",{style:{fontSize:11,color:T.t4,marginBottom:12,padding:"8px 12px",background:T.bg2,borderRadius:8}},"Verificando ventana de 24hs…")
+          :React.createElement("div",{style:{fontSize:11,marginBottom:12,padding:"8px 12px",borderRadius:8,background:supWindow.open?T.greenBg:T.amberBg,color:supWindow.open?T.green:T.amber,border:"1px solid "+(supWindow.open?T.green+"33":T.amber+"33")}},
+            supWindow.open
+              ?"✓ Ventana de 24hs ABIERTA. Se envía texto y adjuntos directo, sin plantilla."
+              :("⚠ Ventana de 24hs CERRADA"+(supWindow.hoursSince?" (último mensaje hace "+Math.round(supWindow.hoursSince)+"hs)":"")+". Primero se envía la plantilla \""+SUP_TEMPLATE+"\" y después el texto y los adjuntos.")),
+        React.createElement("label",{style:lbl},"Detalle del pedido"),
+        React.createElement("textarea",{value:supText,onChange:function(e){setSupText(e.target.value)},placeholder:"Detallá medidas, cantidades, plazos, etc.",rows:5,disabled:supSending,style:Object.assign({},inp,{resize:"vertical",marginBottom:12,fontFamily:"inherit",opacity:supSending?0.5:1})}),
+        React.createElement("label",{style:lbl},"Adjuntos (opcional)"),
+        React.createElement("div",{
+            onClick:function(){if(!supSending&&supFileInputRef.current)supFileInputRef.current.click()},
+            onDragOver:function(e){e.preventDefault()},
+            onDrop:function(e){e.preventDefault();if(!supSending)addSupFiles(e.dataTransfer.files)},
+            style:{border:"2px dashed "+T.border,borderRadius:10,padding:"14px 12px",textAlign:"center",cursor:supSending?"default":"pointer",background:T.bg2,marginBottom:10,opacity:supSending?0.5:1}},
+            React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t3}},"Soltá o hacé clic para agregar archivos"),
+            React.createElement("div",{style:{fontSize:10,color:T.t4,marginTop:2}},"PDF o imágenes · 0 o varios")),
+        React.createElement("input",{ref:supFileInputRef,type:"file",accept:"application/pdf,.pdf,image/*",multiple:true,style:{display:"none"},onChange:function(e){addSupFiles(e.target.files);e.target.value=""}}),
+        supFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:12,maxHeight:180,overflowY:"auto"}},
+          supFiles.map(function(p){
+            var statusColor=p.error?T.red:(p.uploading?T.t4:T.amber);
+            return React.createElement("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:p.error?T.redBg:(p.url?T.amberBg:T.bg2),borderRadius:8,border:"1px solid "+(p.error?T.red+"44":(p.url?T.amber+"33":T.border))}},
+              React.createElement(Icon,{name:p.uploading?"Clock":(p.error?"X":(p.mediaType==="image"?"FileText":"Paperclip")),size:16,color:statusColor}),
+              React.createElement("div",{style:{flex:1,minWidth:0}},
+                React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},p.file.name),
+                React.createElement("div",{style:{fontSize:10,color:statusColor}},p.uploading?"Cargando…":(p.error?("Error: "+p.error):"Listo"))),
+              !supSending&&React.createElement("button",{onClick:function(){removeSupFile(p.id)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:14})));
+          })),
+        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:6}},
+          React.createElement("button",{onClick:closeSupModal,disabled:supSending,style:{fontSize:13,fontWeight:600,padding:"9px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:supSending?"default":"pointer",fontFamily:"inherit",opacity:supSending?0.5:1}},"Cancelar"),
+          React.createElement("button",{onClick:handleSendSup,disabled:!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}),style:{fontSize:13,fontWeight:700,padding:"9px 18px",borderRadius:8,border:"none",background:(!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}))?T.t4:T.amber,color:"#fff",cursor:(!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}))?"default":"pointer",fontFamily:"inherit",opacity:(!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}))?0.5:1,display:"flex",alignItems:"center",gap:6}},
+            React.createElement(Icon,{name:"Send",size:14,color:"#fff"}),supSending?"Enviando…":"Enviar pedido"))
       )),
 
     showTemplateModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget)closeTemplateModal()}},
