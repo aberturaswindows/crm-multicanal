@@ -6,7 +6,7 @@
 <title>NexoCRM - CRM Multicanal con IA</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23D97706'/%3E%3Cstop offset='1' stop-color='%2344403C'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-size='18' font-weight='700' font-family='sans-serif'%3EN%3C/text%3E%3C/svg%3E">
 <script>(function(){var t=localStorage.getItem('nexocrm-theme')||'dark';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.background=t==='light'?'#FAFAF9':'#1C1917'})();</script>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
@@ -46,7 +46,7 @@ var API=window.location.origin+"/api";
 /* ── TOKENS ─────────────────────────────────────── */
 function getTheme(mode){
   if(mode==="light")return{
-    bg:"#FAFAF9",nav:"#F0EFED",card:"#FFFFFF",card2:"#F5F5F4",hover:"#E7E5E4",
+    bg:"#FAFAF9",nav:"#F0EFED",card:"#FFFFFF",card2:"#F5F5F4",bg2:"#F5F5F4",hover:"#E7E5E4",
     border:"#D6D3D1",borderHi:"#A8A29E",
     t1:"#1C1917",t2:"#44403C",t3:"#78716C",t4:"#A8A29E",
     accent:"#B45309",accentBg:"rgba(180,83,9,0.09)",accentBd:"rgba(180,83,9,0.20)",
@@ -59,7 +59,7 @@ function getTheme(mode){
     statusRead:"#53BDEB"
   };
   return{
-    bg:"#1C1917",nav:"#0C0A09",card:"#292524",card2:"#1C1917",hover:"#3C3330",
+    bg:"#1C1917",nav:"#0C0A09",card:"#292524",card2:"#1C1917",bg2:"#231F1D",hover:"#3C3330",
     border:"#44403C",borderHi:"#57534E",
     t1:"#F5F5F4",t2:"#D6D3D1",t3:"#A8A29E",t4:"#78716C",
     accent:"#D97706",accentBg:"rgba(217,119,6,0.12)",accentBd:"rgba(217,119,6,0.25)",
@@ -205,14 +205,14 @@ function Avatar(props){
         React.createElement("path",{d:logo.path}))),
     !hasPhoto&&!showLogoFallback&&React.createElement("div",{style:{width:size,height:size,borderRadius:"50%",background:"hsl("+h+",35%,15%)",border:"2px solid hsl("+h+",40%,25%)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.33,fontWeight:700,color:"hsl("+h+",55%,65%)",letterSpacing:0.5}},getInitials(name)),
     chData&&!showLogoFallback&&React.createElement("div",{style:{position:"absolute",bottom:-1,right:-1,width:Math.max(14,size*0.36),height:Math.max(14,size*0.36),borderRadius:"50%",background:chData.color,border:"2px solid "+T.card,display:"flex",alignItems:"center",justifyContent:"center"}},
-      React.createElement("span",{style:{fontSize:Math.max(7,size*0.13),color:"#fff",fontWeight:800,lineHeight:1}},chData.icon[0]))
+      React.createElement("span",{style:{fontSize:Math.max(7,size*0.13),color:"#fff",fontWeight:700,lineHeight:1}},chData.icon[0]))
   );
 }
 
 /* ── BADGE ───────────────────────────────────────── */
 function Badge(props){
   var color=props.color||T.t4;
-  return React.createElement("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:6,background:color+"14",color:color,fontWeight:600,whiteSpace:"nowrap",letterSpacing:0.1}},props.children);
+  return React.createElement("span",{style:{fontSize:11,padding:"2px 8px",borderRadius:6,background:color+"14",color:color,fontWeight:600,whiteSpace:"nowrap",letterSpacing:0.1}},props.children);
 }
 function StageBadge(props){
   var s=STAGE_CONFIG[props.stage];if(!s)return null;
@@ -223,16 +223,16 @@ function StageBadge(props){
 function StageProgress(props){
   var s=STAGE_CONFIG[props.stage]||{step:1};
   return React.createElement("div",null,
-    React.createElement("div",{style:{display:"flex",gap:3,marginBottom:5}},
+    React.createElement("div",{style:{display:"flex",gap:4,marginBottom:4}},
       Array.from({length:5}).map(function(_,i){return React.createElement("div",{key:i,style:{flex:1,height:5,borderRadius:3,background:i<s.step?T.accent:T.border,transition:"background .3s"}})})),
-    React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginTop:5}},
-      PIPELINE_LABELS.map(function(l,i){return React.createElement("span",{key:i,style:{fontSize:9.5,color:i<s.step?T.accent:T.t4,fontWeight:i===s.step-1?700:400,textAlign:"center",flex:1,lineHeight:1.3}},l)}))
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginTop:4}},
+      PIPELINE_LABELS.map(function(l,i){return React.createElement("span",{key:i,style:{fontSize:11,color:i<s.step?T.accent:T.t4,fontWeight:i===s.step-1?700:400,textAlign:"center",flex:1,lineHeight:1.3}},l)}))
   );
 }
 
 /* ── TYPING INDICATOR ────────────────────────────── */
 function TypingDots(){
-  return React.createElement("div",{style:{display:"flex",gap:4,alignItems:"center",padding:"10px 14px"}},
+  return React.createElement("div",{style:{display:"flex",gap:4,alignItems:"center",padding:"8px 16px"}},
     [0,1,2].map(function(i){return React.createElement("div",{key:i,style:{width:7,height:7,borderRadius:"50%",background:T.neutral,animation:"bounce 1.2s ease-in-out "+(i*0.2)+"s infinite"}})})
   );
 }
@@ -365,8 +365,8 @@ function AttachmentBubble(props){
       info.kind==="heic"?"Vista previa no disponible — "+info.hint:info.hint),
     info.kind==="cad"&&React.createElement(React.Fragment,null,
       React.createElement("div",{style:{fontSize:11,color:T.t4,marginBottom:2}},info.hint),
-      React.createElement("div",{style:{fontSize:10,color:T.t4,marginBottom:8}},info.compat)),
-    React.createElement("div",{style:{display:"flex",gap:6}},
+      React.createElement("div",{style:{fontSize:11,color:T.t4,marginBottom:8}},info.compat)),
+    React.createElement("div",{style:{display:"flex",gap:8}},
       info.kind==="pdf"&&React.createElement("button",{onClick:function(){_openLightbox(m.media_url)},style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:c+"15",color:c,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}},
         React.createElement(Icon,{name:"Image",size:11,color:c}),"Ver"),
       info.kind==="pdf"&&React.createElement("a",{href:m.media_url,target:"_blank",style:{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"1px solid "+c+"44",background:"transparent",color:c,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}},
@@ -375,7 +375,7 @@ function AttachmentBubble(props){
         React.createElement(Icon,{name:"Download",size:11,color:c}),"Descargar")),
     info.kind==="cad"&&onQuickReply&&React.createElement("button",{
       onClick:function(){if(confirm("¿Enviar respuesta de incompatibilidad de AutoCAD?"))onQuickReply(DWG_INCOMPATIBLE_REPLY)},
-      style:{marginTop:8,width:"100%",padding:"5px 8px",fontSize:10,borderRadius:6,border:"1px solid "+T.border,background:"transparent",color:T.t4,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}
+      style:{marginTop:8,width:"100%",padding:"4px 8px",fontSize:11,borderRadius:6,border:"1px solid "+T.border,background:"transparent",color:T.t4,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}
     },"📋 Respuesta por incompatibilidad de versión")
   );
 }
@@ -384,7 +384,7 @@ function AttachmentBubble(props){
 function renderMedia(m,onQuickReply){
   var els=[];
   var isPlaceholder=m.content&&/^\[(Imagen|Video|Audio|Archivo)/.test(m.content);
-  if(m.story_url){els.push(React.createElement("div",{key:"story",style:{marginBottom:6,padding:8,background:T.neutralBg,borderRadius:8,border:"1px solid "+T.neutralBd}},React.createElement("div",{style:{fontSize:10,color:T.neutral,fontWeight:700,marginBottom:4}},"↩ Respuesta a tu historia"),React.createElement("img",{src:m.story_url,style:{maxWidth:"100%",maxHeight:140,borderRadius:6,display:"block"},onError:function(e){e.target.style.display="none"}})))}
+  if(m.story_url){els.push(React.createElement("div",{key:"story",style:{marginBottom:8,padding:8,background:T.neutralBg,borderRadius:8,border:"1px solid "+T.neutralBd}},React.createElement("div",{style:{fontSize:11,color:T.neutral,fontWeight:700,marginBottom:4}},"↩ Respuesta a tu historia"),React.createElement("img",{src:m.story_url,style:{maxWidth:"100%",maxHeight:140,borderRadius:6,display:"block"},onError:function(e){e.target.style.display="none"}})))}
   if(m.media_type==="image"&&m.media_url){
     var imgExt=(m.original_filename||"").split(".").pop().toLowerCase();
     if(imgExt==="heic"){els.push(React.createElement(AttachmentBubble,{key:"file",m:m,onQuickReply:onQuickReply}))}
@@ -407,7 +407,7 @@ function renderSystemMessage(m,i){
     React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:8,paddingBottom:8,borderBottom:"1px solid "+T.accentBd}},
       React.createElement(Icon,{name:"FileText",size:13,color:T.accent}),
       React.createElement("span",{style:{fontSize:12,fontWeight:700,color:T.accent}},"Ficha para cotizar"),
-      React.createElement("span",{style:{fontSize:10,color:T.t4,marginLeft:"auto",background:T.accentBg,padding:"2px 8px",borderRadius:6}},"Solo visible en CRM")),
+      React.createElement("span",{style:{fontSize:11,color:T.t4,marginLeft:"auto",background:T.accentBg,padding:"2px 8px",borderRadius:6}},"Solo visible en CRM")),
     React.createElement("pre",{style:{margin:0,fontFamily:"inherit",fontSize:12,color:T.t2,whiteSpace:"pre-wrap",lineHeight:1.7}},txt)
   );
 }
@@ -442,22 +442,22 @@ function LoginScreen(props){
     }catch(e){setError("Error de conexión con el servidor")}
     setLoading(false);
   };
-  var inp={width:"100%",padding:"10px 14px",borderRadius:8,border:"1px solid "+T.border,fontSize:14,fontFamily:"inherit",outline:"none",background:T.bg,color:T.t1};
+  var inp={width:"100%",padding:"8px 16px",borderRadius:8,border:"1px solid "+T.border,fontSize:14,fontFamily:"inherit",outline:"none",background:T.bg,color:T.t1};
   return React.createElement("div",{style:{width:"100%",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,"+T.bg+","+T.card+")"}},
     React.createElement("div",{style:{background:T.card,borderRadius:16,padding:40,width:360,boxShadow:"0 20px 60px rgba(0,0,0,0.5)",border:"1px solid "+T.border}},
-      React.createElement("div",{style:{textAlign:"center",marginBottom:32}},
+      React.createElement("div",{style:{textAlign:"center",marginBottom:42}},
         React.createElement("div",{style:{width:52,height:52,borderRadius:14,background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}},
-          React.createElement("span",{style:{color:"#fff",fontWeight:800,fontSize:22}},"N")),
+          React.createElement("span",{style:{color:"#fff",fontWeight:700,fontSize:22}},"N")),
         React.createElement("div",{style:{fontSize:22,fontWeight:700,color:T.t1}},
           "Nexo",React.createElement("span",{style:{color:T.accent}},"CRM")),
         React.createElement("div",{style:{fontSize:13,color:T.t4,marginTop:4}},"CRM multicanal con IA")),
-      React.createElement("div",{style:{marginBottom:14}},
-        React.createElement("label",{style:{fontSize:11,fontWeight:700,color:T.t4,display:"block",marginBottom:6,letterSpacing:.6}},"USUARIO"),
+      React.createElement("div",{style:{marginBottom:16}},
+        React.createElement("label",{style:{fontSize:11,fontWeight:700,color:T.t4,display:"block",marginBottom:8,letterSpacing:.6}},"USUARIO"),
         React.createElement("input",{type:"text",value:username,onChange:function(e){setUsername(e.target.value)},onKeyDown:function(e){if(e.key==="Enter")handleLogin()},style:inp,placeholder:"tu.usuario"})),
-      React.createElement("div",{style:{marginBottom:22}},
-        React.createElement("label",{style:{fontSize:11,fontWeight:700,color:T.t4,display:"block",marginBottom:6,letterSpacing:.6}},"CONTRASEÑA"),
+      React.createElement("div",{style:{marginBottom:24}},
+        React.createElement("label",{style:{fontSize:11,fontWeight:700,color:T.t4,display:"block",marginBottom:8,letterSpacing:.6}},"CONTRASEÑA"),
         React.createElement("input",{type:"password",value:password,onChange:function(e){setPassword(e.target.value)},onKeyDown:function(e){if(e.key==="Enter")handleLogin()},style:inp,placeholder:"••••••••"})),
-      error&&React.createElement("div",{style:{color:T.red,fontSize:12,marginBottom:14,textAlign:"center",padding:"8px",background:T.redBg,borderRadius:8}},error),
+      error&&React.createElement("div",{style:{color:T.red,fontSize:12,marginBottom:16,textAlign:"center",padding:"8px",background:T.redBg,borderRadius:8}},error),
       React.createElement("button",{onClick:handleLogin,disabled:loading,style:{width:"100%",padding:"12px",borderRadius:8,border:"none",background:T.accent,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",opacity:loading?0.7:1,fontFamily:"inherit"}},loading?"Ingresando...":"Ingresar"))
   );
 }
@@ -519,6 +519,7 @@ function App(){
   var _ar=useState([]);var autoReply=_ar[0];var setAutoReply=_ar[1];
   var _slr=useState(false);var showLostReasons=_slr[0];var setShowLostReasons=_slr[1];
   var _scm=useState(false);var showClipMenu=_scm[0];var setShowClipMenu=_scm[1];
+  var _smm=useState(false);var showMoreMenu=_smm[0];var setShowMoreMenu=_smm[1];
   var _scp=useState(false);var showContactPicker=_scp[0];var setShowContactPicker=_scp[1];
   var _srf=useState(false);var showReminderForm=_srf[0];var setShowReminderForm=_srf[1];
   var _upl=useState(false);var uploading=_upl[0];var setUploading=_upl[1];
@@ -991,9 +992,9 @@ function App(){
   /* ── STYLE SHORTCUTS ─────────────────────────── */
   var inp={width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+T.border,fontSize:13,fontFamily:"inherit",outline:"none",background:T.bg,color:T.t1};
   var sel=Object.assign({},inp,{background:T.bg});
-  var lbl={fontSize:10,fontWeight:700,color:T.t4,display:"block",marginBottom:5,letterSpacing:.6,textTransform:"uppercase"};
-  var btnP={padding:"9px 20px",fontSize:13,borderRadius:8,border:"none",background:T.accent,color:"#fff",cursor:"pointer",fontWeight:700,fontFamily:"inherit"};
-  var btnS={padding:"5px 12px",fontSize:11,borderRadius:6,border:"1px solid "+T.border,background:"transparent",color:T.t3,cursor:"pointer",fontFamily:"inherit"};
+  var lbl={fontSize:11,fontWeight:700,color:T.t4,display:"block",marginBottom:4,letterSpacing:.6,textTransform:"uppercase"};
+  var btnP={padding:"8px 20px",fontSize:13,borderRadius:8,border:"none",background:T.accent,color:"#fff",cursor:"pointer",fontWeight:700,fontFamily:"inherit"};
+  var btnS={padding:"4px 12px",fontSize:11,borderRadius:6,border:"1px solid "+T.border,background:"transparent",color:T.t3,cursor:"pointer",fontFamily:"inherit"};
 
   /* ══════════════════════════════════════════════
      RENDER
@@ -1004,7 +1005,7 @@ function App(){
     React.createElement("div",{style:{width:64,flexShrink:0,background:T.nav,borderRight:"1px solid "+T.border,display:"flex",flexDirection:"column",alignItems:"center",padding:"14px 0",gap:4}},
       /* Logo */
       React.createElement("div",{style:{width:38,height:38,borderRadius:10,background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:10,flexShrink:0}},
-        React.createElement("span",{style:{color:"#fff",fontWeight:800,fontSize:17}},"N")),
+        React.createElement("span",{style:{color:"#fff",fontWeight:700,fontSize:17}},"N")),
       /* Nav buttons */
       ...[
         {v:"inbox",   icon:"Inbox",      badge:totalUnread,   title:"Bandeja"},
@@ -1018,7 +1019,7 @@ function App(){
             background:view===it.v?T.accentBg:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}},
           React.createElement(Icon,{name:it.icon,size:20,color:view===it.v?T.accent:T.t4}),
           it.badge>0&&React.createElement("span",{style:{position:"absolute",top:6,right:6,width:16,height:16,borderRadius:"50%",
-            background:T.accent,color:"#0A1220",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}},it.badge)
+            background:T.accent,color:"#0A1220",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}},it.badge)
         );
       }),
       React.createElement("div",{style:{flex:1}}),
@@ -1029,7 +1030,7 @@ function App(){
         style:{width:40,height:40,borderRadius:10,border:"none",cursor:"pointer",background:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}},
         React.createElement(Icon,{name:soundOn?"Volume2":"VolumeX",size:18,color:soundOn?T.t3:T.t4})),
       /* User avatar */
-      React.createElement("div",{title:user.name+" · "+user.role,style:{width:36,height:36,borderRadius:"50%",background:"hsl(220,35%,20%)",border:"2px solid "+T.accent+"44",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",marginTop:6},
+      React.createElement("div",{title:user.name+" · "+user.role,style:{width:36,height:36,borderRadius:"50%",background:"hsl(220,35%,20%)",border:"2px solid "+T.accent+"44",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",marginTop:8},
         onClick:function(){if(confirm("¿Cerrar sesión?"))logout()}},
         React.createElement("span",{style:{fontSize:12,fontWeight:700,color:T.accent}},getInitials(user.name)))
     ),
@@ -1042,22 +1043,22 @@ function App(){
         /* Header */
         React.createElement("div",{style:{padding:"12px 12px 0",borderBottom:"1px solid "+T.border}},
           /* New WA contact */
-          React.createElement("button",{onClick:openTemplateModalNew,style:{width:"100%",padding:"8px 12px",fontSize:11,borderRadius:8,border:"1px solid "+"#25D36633",background:"#25D36608",color:"#25D366",cursor:"pointer",fontWeight:700,fontFamily:"inherit",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"center",gap:6}},
+          React.createElement("button",{onClick:openTemplateModalNew,style:{width:"100%",padding:"8px 12px",fontSize:11,borderRadius:8,border:"1px solid "+"#25D36633",background:"#25D36608",color:"#25D366",cursor:"pointer",fontWeight:700,fontFamily:"inherit",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"center",gap:8}},
             React.createElement(Icon,{name:"Plus",size:13,color:"#25D366"}),"Nuevo contacto WhatsApp"),
           /* Search */
           React.createElement("div",{style:{position:"relative",marginBottom:8}},
             React.createElement(Icon,{name:"Search",size:14,style:{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}),
             React.createElement("input",{value:searchText,onChange:function(e){setSearchText(e.target.value)},placeholder:"Buscar contacto o mensaje…",style:Object.assign({},inp,{paddingLeft:32,fontSize:12})})),
           /* Channel filters */
-          React.createElement("div",{style:{display:"flex",gap:4,marginBottom:6}},
+          React.createElement("div",{style:{display:"flex",gap:4,marginBottom:8}},
             [["all","Todos",T.accent],["unread","No leídos "+( totalUnread>0?"("+totalUnread+")":""),T.accent],
              ["whatsapp","WA","#25D366"],["instagram","IG",T.t3],["facebook","FB",T.t3]
             ].map(function(f){var active=filterCh===f[0];return React.createElement("button",{key:f[0],onClick:function(){setFilterCh(f[0])},
-              style:{flex:f[0]==="all"||f[0]==="unread"?2:1,padding:"4px 4px",borderRadius:6,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit",
+              style:{flex:f[0]==="all"||f[0]==="unread"?2:1,padding:"4px 4px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",
                 border:"1px solid "+(active?f[2]+"55":T.border),background:active?f[2]+"12":"transparent",color:active?f[2]:T.t4}},f[1]);})),
           /* Dept filter (admin only) */
           React.createElement("div",{style:{marginBottom:8}},
-            React.createElement("select",{value:filterDept,onChange:function(e){setFilterDept(e.target.value)},style:Object.assign({},sel,{fontSize:11,padding:"5px 8px"})},
+            React.createElement("select",{value:filterDept,onChange:function(e){setFilterDept(e.target.value)},style:Object.assign({},sel,{fontSize:11,padding:"4px 8px"})},
               React.createElement("option",{value:"all"},"Todos los departamentos"),
               Object.entries(DEPARTMENTS).map(function(e){return React.createElement("option",{key:e[0],value:e[0]},e[1].label)})
             )
@@ -1068,18 +1069,18 @@ function App(){
           displayContacts.map(function(c){
             var chData=CHANNELS[c.channel]||{};var isSelected=selected&&selected.id===c.id;var hasUnread=!!c.is_unread;var deptData=DEPARTMENTS[c.department]||{};
             return React.createElement("div",{key:c.id,onClick:function(){selectContact(c)},
-              style:{display:"flex",gap:10,padding:"11px 12px",cursor:"pointer",alignItems:"flex-start",
+              style:{display:"flex",gap:10,padding:"12px 12px",cursor:"pointer",alignItems:"flex-start",
                 background:isSelected?T.hover:"transparent",borderLeft:"3px solid "+(isSelected?T.accent:"transparent"),
                 borderBottom:"1px solid "+T.border+"55",transition:"background .1s"}},
               React.createElement(Avatar,{name:c.name,channel:c.channel,size:40,profilePic:c.profile_picture_url}),
               React.createElement("div",{style:{flex:1,minWidth:0}},
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}},
-                  React.createElement("span",{style:{fontSize:13,fontWeight:hasUnread?700:500,color:hasUnread?T.t1:T.t2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:150}},c.name),
-                  React.createElement("span",{style:{fontSize:10,color:hasUnread?T.accent:T.t4,flexShrink:0,fontWeight:hasUnread?700:400}},formatTime(c.last_message_at))),
+                  React.createElement("span",{style:{fontSize:13,fontWeight:hasUnread?700:600,color:hasUnread?T.t1:T.t2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:150}},c.name),
+                  React.createElement("span",{style:{fontSize:11,color:hasUnread?T.accent:T.t4,flexShrink:0,fontWeight:hasUnread?700:400}},formatTime(c.last_message_at))),
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
-                  React.createElement("span",{style:{fontSize:11.5,color:hasUnread?T.t2:T.t4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,fontWeight:hasUnread?500:400}},c.last_message||"Sin mensajes"),
-                  hasUnread&&React.createElement("span",{style:{width:9,height:9,borderRadius:"50%",background:T.accent,flexShrink:0,marginLeft:5}})),
-                React.createElement("div",{style:{display:"flex",gap:3,flexWrap:"wrap"}},
+                  React.createElement("span",{style:{fontSize:12,color:hasUnread?T.t2:T.t4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,fontWeight:hasUnread?600:400}},c.last_message||"Sin mensajes"),
+                  hasUnread&&React.createElement("span",{style:{width:9,height:9,borderRadius:"50%",background:T.accent,flexShrink:0,marginLeft:4}})),
+                React.createElement("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},
                   React.createElement(Badge,{color:deptData.color||T.t4},deptData.label||c.department||""),
                   React.createElement(StageBadge,{stage:c.conversation_stage||"consulta"}))
               )
@@ -1099,37 +1100,51 @@ function App(){
             React.createElement(Avatar,{name:selected.name,channel:selected.channel,size:36,profilePic:selected.profile_picture_url}),
             React.createElement("div",{style:{flex:1}},
               React.createElement("div",{style:{fontSize:14,fontWeight:700,color:T.t1}},selected.name),
-              React.createElement("div",{style:{display:"flex",gap:5,marginTop:3,flexWrap:"wrap"}},
+              React.createElement("div",{style:{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}},
                 ch&&React.createElement(Badge,{color:ch.color},ch.label),
                 dept&&React.createElement(Badge,{color:dept.color},dept.label),
                 React.createElement(StageBadge,{stage:selected.conversation_stage||"consulta"}))),
             /* Header actions */
-            React.createElement("div",{style:{display:"flex",gap:6}},
+            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},
+              /* Grupo 1: acciones de envío */
               selected.channel==="whatsapp"&&React.createElement("button",{onClick:openPresupModal,
-                style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"none",background:"#1D9E75",color:"#fff",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}},
-                React.createElement(Icon,{name:"FileText",size:13,color:"#fff"}),"Enviar presupuesto"),
+                style:{fontSize:12,fontWeight:700,padding:"8px 12px",borderRadius:8,border:"none",background:"#1D9E75",color:"#fff",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}},
+                React.createElement(Icon,{name:"FileText",size:14,color:"#fff"}),"Enviar presupuesto"),
               selected.channel==="whatsapp"&&React.createElement("button",{onClick:openDocModal,title:"Enviar facturas, recibos, etc. (se unen en un PDF)",
-                style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid "+T.blue+"55",background:T.blue+"15",color:T.blue,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}},
-                React.createElement(Icon,{name:"Paperclip",size:13,color:T.blue}),"Enviar documentación"),
+                style:{fontSize:12,fontWeight:600,padding:"8px 12px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}},
+                React.createElement(Icon,{name:"Paperclip",size:14,color:T.t3}),"Enviar documentación"),
               selected.channel==="whatsapp"&&React.createElement("button",{onClick:openSupModal,title:"Pedir cotización a un proveedor",
-                style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid "+T.amber+"55",background:T.amberBg,color:T.amber,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}},
-                React.createElement(Icon,{name:"Send",size:13,color:T.amber}),"Pedir cotización"),
-              selected.channel==="whatsapp"&&React.createElement("button",{onClick:openTemplateModalExisting,
-                style:{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid #25D36633",background:"#25D36608",color:"#25D366",cursor:"pointer",fontFamily:"inherit"}},
+                style:{fontSize:12,fontWeight:600,padding:"8px 12px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}},
+                React.createElement(Icon,{name:"Send",size:14,color:T.t3}),"Pedir cotización"),
+              /* Separador sutil */
+              selected.channel==="whatsapp"&&React.createElement("div",{style:{width:1,height:24,background:T.border,opacity:0.6,margin:"0 4px"}}),
+              /* Grupo 2: herramientas */
+              selected.channel==="whatsapp"&&React.createElement("button",{onClick:openTemplateModalExisting,title:"Enviar plantilla de WhatsApp",
+                style:{fontSize:11,fontWeight:600,padding:"8px 12px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t3,cursor:"pointer",fontFamily:"inherit"}},
                 "📋 Plantilla"),
               React.createElement("button",{onClick:function(){showFilesPanel?setShowFilesPanel(false):loadFilesPanel()},title:"Ver archivos adjuntos",
-                style:{fontSize:11,fontWeight:600,padding:"6px 10px",borderRadius:8,border:"1px solid "+(showFilesPanel?T.accent+"55":T.border),background:showFilesPanel?T.accentBg:"transparent",color:showFilesPanel?T.accent:T.t3,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}},
-                React.createElement(Icon,{name:"Paperclip",size:13,color:showFilesPanel?T.accent:T.t3}),
+                style:{fontSize:11,fontWeight:600,padding:"8px 8px",borderRadius:8,border:"1px solid "+(showFilesPanel?T.accent+"55":T.border),background:showFilesPanel?T.accentBg:"transparent",color:showFilesPanel?T.accent:T.t3,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}},
+                React.createElement(Icon,{name:"Paperclip",size:14,color:showFilesPanel?T.accent:T.t3}),
                 attachmentCount>0?attachmentCount:""),
               React.createElement("button",{onClick:handleMarkAsUnread,title:"Marcar como no leído",
-                style:{fontSize:11,fontWeight:600,padding:"6px 10px",borderRadius:8,border:"1px solid "+T.accent+"44",background:T.accentBg,color:T.accent,cursor:"pointer",fontFamily:"inherit"}},
-                React.createElement(Icon,{name:"MailOpen",size:14})),
-              React.createElement("button",{onClick:function(){changePassword()},style:Object.assign({},btnS,{padding:"6px 10px"})},React.createElement(Icon,{name:"Key",size:14})),
-              React.createElement("button",{onClick:logout,style:Object.assign({},btnS,{padding:"6px 10px",borderColor:T.red+"33",color:T.red})},React.createElement(Icon,{name:"LogOut",size:14}))
+                style:{fontSize:11,fontWeight:600,padding:"8px 8px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t3,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center"}},
+                React.createElement(Icon,{name:"MailOpen",size:14,color:T.t3})),
+              /* Menú "···" (cambiar contraseña, etc.) */
+              React.createElement("div",{style:{position:"relative"}},
+                React.createElement("button",{onClick:function(){setShowMoreMenu(!showMoreMenu)},title:"Más opciones",
+                  style:{fontSize:11,fontWeight:600,padding:"8px 8px",borderRadius:8,border:"1px solid "+(showMoreMenu?T.borderHi:T.border),background:showMoreMenu?T.hover:"transparent",color:T.t3,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center"}},
+                  React.createElement(Icon,{name:"MoreVertical",size:14,color:T.t3})),
+                showMoreMenu&&React.createElement(React.Fragment,null,
+                  React.createElement("div",{onClick:function(){setShowMoreMenu(false)},style:{position:"fixed",inset:0,zIndex:50}}),
+                  React.createElement("div",{style:{position:"absolute",right:0,top:"calc(100% + 4px)",minWidth:200,background:T.card,border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",zIndex:60,overflow:"hidden"}},
+                    React.createElement("button",{onClick:function(){setShowMoreMenu(false);changePassword()},style:{width:"100%",textAlign:"left",padding:"8px 12px",fontSize:12,fontWeight:600,color:T.t2,background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:8}},
+                      React.createElement(Icon,{name:"Key",size:14,color:T.t3}),"Cambiar contraseña")))),
+              /* Logout queda visible */
+              React.createElement("button",{onClick:logout,title:"Cerrar sesión",style:{fontSize:11,fontWeight:600,padding:"8px 8px",borderRadius:8,border:"1px solid "+T.red+"33",background:"transparent",color:T.red,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center"}},React.createElement(Icon,{name:"LogOut",size:14,color:T.red}))
             )
           ),
           /* AI Routing bar */
-          React.createElement("div",{style:{margin:"6px 14px 0",padding:"7px 12px",background:T.card,borderBottom:"1px solid "+T.border,borderRadius:0,display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}},
+          React.createElement("div",{style:{margin:"6px 14px 0",padding:"8px 12px",background:T.card,borderBottom:"1px solid "+T.border,borderRadius:0,display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}},
             React.createElement("div",{style:{width:8,height:8,borderRadius:"50%",background:selected.ai_paused?T.amber:T.neutral,flexShrink:0}}),
             React.createElement("span",{style:{fontSize:11,fontWeight:700,color:T.t4,letterSpacing:.5,textTransform:"uppercase"}},"Routing IA"),
             selected.ai_paused?
@@ -1141,11 +1156,11 @@ function App(){
               React.createElement("span",{style:{fontSize:11,color:T.t3}},"Derivado a"),
               dept&&React.createElement(Badge,{color:dept.color},dept.label),
               React.createElement("span",{style:{fontSize:11,color:T.t4}},"Confianza: "+(selected.ai_confidence||"—")),
-              React.createElement("button",{onClick:pauseAi,style:{marginLeft:"auto",padding:"3px 10px",fontSize:11,borderRadius:6,border:"1px solid "+T.border,background:"transparent",color:T.t4,cursor:"pointer",fontFamily:"inherit"}},"⏸ Pausar"),
-              user.role==="admin"&&React.createElement("button",{onClick:function(){setShowReassign(!showReassign)},style:Object.assign({},btnS,{fontSize:10})},"Reasignar"),
-              showReassign&&React.createElement("div",{style:{display:"flex",gap:4,width:"100%",marginTop:6,paddingTop:6,borderTop:"1px solid "+T.border}},
+              React.createElement("button",{onClick:pauseAi,style:{marginLeft:"auto",padding:"4px 8px",fontSize:11,borderRadius:6,border:"1px solid "+T.border,background:"transparent",color:T.t4,cursor:"pointer",fontFamily:"inherit"}},"⏸ Pausar"),
+              user.role==="admin"&&React.createElement("button",{onClick:function(){setShowReassign(!showReassign)},style:Object.assign({},btnS,{fontSize:11})},"Reasignar"),
+              showReassign&&React.createElement("div",{style:{display:"flex",gap:4,width:"100%",marginTop:8,paddingTop:8,borderTop:"1px solid "+T.border}},
                 Object.entries(DEPARTMENTS).map(function(e){var k=e[0];var d=e[1];return React.createElement("button",{key:k,onClick:function(){updateContact(selected.id,{department:k})},
-                  style:{padding:"4px 10px",fontSize:10,borderRadius:8,border:"1px solid "+(selected.department===k?d.color+"44":T.border),
+                  style:{padding:"4px 10px",fontSize:11,borderRadius:8,border:"1px solid "+(selected.department===k?d.color+"44":T.border),
                     background:selected.department===k?d.color+"15":"transparent",color:selected.department===k?d.color:T.t4,cursor:"pointer",fontFamily:"inherit"}},d.icon+" "+d.label);}))
             )
           ),
@@ -1165,34 +1180,34 @@ function App(){
               if(m.direction==="system"){var sm=renderSystemMessage(m,i);return sep?[sep,sm]:sm}
               var isAi=m.agent_name==="Claudia"||m.agent_name==="IA NexoCRM";var isOut=m.direction==="outgoing";
               var bubble=React.createElement("div",{key:m.id||i,style:{alignSelf:isOut?"flex-end":"flex-start",maxWidth:"72%",animation:"slideIn .2s ease"}},
-                isOut&&isAi&&React.createElement("div",{style:{fontSize:10,color:T.neutral,fontWeight:700,textAlign:"right",marginBottom:3}},
+                isOut&&isAi&&React.createElement("div",{style:{fontSize:11,color:T.neutral,fontWeight:700,textAlign:"right",marginBottom:4}},
                   "✦ Claudia"),
-                React.createElement("div",{style:{padding:"9px 13px",borderRadius:isOut?"14px 4px 14px 14px":"4px 14px 14px 14px",
+                React.createElement("div",{style:{padding:"8px 12px",borderRadius:isOut?"14px 4px 14px 14px":"4px 14px 14px 14px",
                   background:isOut?(isAi?T.neutralBg:T.accentBg):T.card,
                   color:T.t2,fontSize:13.5,lineHeight:1.55,
                   border:"1px solid "+(isOut?(isAi?T.neutralBd:T.accentBd):T.border)}},
                   renderMedia(m,function(text){setMsgText(text)})),
-                React.createElement("div",{style:{display:"flex",justifyContent:isOut?"flex-end":"flex-start",gap:5,padding:"2px 4px",alignItems:"center"}},
-                  React.createElement("span",{style:{fontSize:10,color:T.t4}},formatTime(m.created_at)),
-                  isOut&&m.agent_name&&!isAi&&React.createElement("span",{style:{fontSize:10,color:T.accent}},"· "+m.agent_name),
+                React.createElement("div",{style:{display:"flex",justifyContent:isOut?"flex-end":"flex-start",gap:4,padding:"2px 4px",alignItems:"center"}},
+                  React.createElement("span",{style:{fontSize:11,color:T.t4}},formatTime(m.created_at)),
+                  isOut&&m.agent_name&&!isAi&&React.createElement("span",{style:{fontSize:11,color:T.t3}},"· "+m.agent_name),
                   isOut&&m.channel!=="email"&&m.channel!=="telefono"&&React.createElement(MessageStatus,{m:m}))
               );
               return sep?[sep,bubble]:bubble;
             })})(),
             aiLoading&&!selected.ai_paused&&React.createElement("div",{style:{alignSelf:"flex-start",marginLeft:8}},
-              React.createElement("div",{style:{fontSize:10,color:T.neutral,fontWeight:700,marginBottom:3}},"✦ Claudia escribe…"),
+              React.createElement("div",{style:{fontSize:11,color:T.neutral,fontWeight:700,marginBottom:4}},"✦ Claudia escribe…"),
               React.createElement("div",{style:{background:T.neutralBg,border:"1px solid "+T.neutralBd,borderRadius:"4px 12px 12px 12px"}},
                 React.createElement(TypingDots)))
           ),
           /* AI Suggestion */
-          (suggestion||aiLoading)&&React.createElement("div",{style:{margin:"0 32px 8px",padding:"10px 14px",background:T.card,border:"1px solid "+T.border,borderRadius:10,flexShrink:0,display:"flex",gap:10,alignItems:"flex-start"}},
+          (suggestion||aiLoading)&&React.createElement("div",{style:{margin:"0 32px 8px",padding:"8px 16px",background:T.card,border:"1px solid "+T.border,borderRadius:10,flexShrink:0,display:"flex",gap:10,alignItems:"flex-start"}},
             React.createElement(Icon,{name:"Sparkles",size:14,color:T.neutral,style:{marginTop:2,flexShrink:0}}),
             React.createElement("div",{style:{flex:1}},
-              React.createElement("div",{style:{fontSize:10,fontWeight:700,color:T.neutral,marginBottom:4,textTransform:"uppercase",letterSpacing:.4}},"Sugerencia de Claudia"),
+              React.createElement("div",{style:{fontSize:11,fontWeight:700,color:T.neutral,marginBottom:4,textTransform:"uppercase",letterSpacing:.4}},"Sugerencia de Claudia"),
               React.createElement("div",{style:{fontSize:12.5,color:aiLoading?T.t4:T.t2,lineHeight:1.5}},aiLoading?"Generando sugerencia…":suggestion)),
-            !aiLoading&&React.createElement("div",{style:{display:"flex",gap:5,flexShrink:0}},
-              React.createElement("button",{onClick:function(){setMsgText(suggestion)},style:{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:6,border:"1px solid "+T.neutral+"44",background:T.neutralBg,color:T.neutral,cursor:"pointer",fontFamily:"inherit"}},"Usar"),
-              React.createElement("button",{onClick:function(){loadSuggestion(selected.id)},style:Object.assign({},btnS,{fontSize:11,padding:"3px 8px"})},
+            !aiLoading&&React.createElement("div",{style:{display:"flex",gap:4,flexShrink:0}},
+              React.createElement("button",{onClick:function(){setMsgText(suggestion)},style:{fontSize:11,fontWeight:700,padding:"4px 8px",borderRadius:6,border:"1px solid "+T.neutral+"44",background:T.neutralBg,color:T.neutral,cursor:"pointer",fontFamily:"inherit"}},"Usar"),
+              React.createElement("button",{onClick:function(){loadSuggestion(selected.id)},style:Object.assign({},btnS,{fontSize:11,padding:"4px 8px"})},
                 React.createElement(Icon,{name:"RefreshCw",size:12})))
           ),
           /* Input area */
@@ -1200,19 +1215,19 @@ function App(){
             React.createElement("input",{ref:fileInputRef,type:"file",accept:".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.dwg,.dxf,.skp,.rvt,.3ds,.ifc,.heic",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleFileUpload(e.target.files[0]);e.target.value=""}}),
             React.createElement("input",{ref:mediaInputRef,type:"file",accept:"image/*,video/*,.heic",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleFileUpload(e.target.files[0]);e.target.value=""}}),
             /* Clip menu */
-            showClipMenu&&React.createElement("div",{style:{marginBottom:8,padding:8,background:T.card,border:"1px solid "+T.border,borderRadius:10,display:"flex",gap:6,flexWrap:"wrap",animation:"slideIn .2s ease"}},
+            showClipMenu&&React.createElement("div",{style:{marginBottom:8,padding:8,background:T.card,border:"1px solid "+T.border,borderRadius:10,display:"flex",gap:8,flexWrap:"wrap",animation:"slideIn .2s ease"}},
               [["Paperclip","Documento",function(){setShowClipMenu(false);fileInputRef.current&&fileInputRef.current.click()}],
                ["Image","Foto/video",function(){setShowClipMenu(false);mediaInputRef.current&&mediaInputRef.current.click()}],
                ["User","Contacto",function(){setShowClipMenu(false);setShowContactPicker(true)}],
                ["Clock","Recordatorio",function(){setShowClipMenu(false);setShowReminderForm(true)}],
-              ].map(function(it){return React.createElement("button",{key:it[0],onClick:it[2],style:{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:8,border:"1px solid "+T.border,background:T.hover,cursor:"pointer",fontSize:12,color:T.t2,fontFamily:"inherit"}},React.createElement(Icon,{name:it[0],size:13,color:T.t3}),it[1])})
+              ].map(function(it){return React.createElement("button",{key:it[0],onClick:it[2],style:{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:8,border:"1px solid "+T.border,background:T.hover,cursor:"pointer",fontSize:12,color:T.t2,fontFamily:"inherit"}},React.createElement(Icon,{name:it[0],size:13,color:T.t3}),it[1])})
             ),
             /* Contact picker */
             showContactPicker&&React.createElement("div",{style:{marginBottom:8,background:T.card,border:"1px solid "+T.border,borderRadius:10,padding:10,animation:"slideIn .2s ease"}},
               React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:8}},
                 React.createElement("span",{style:{fontSize:12,fontWeight:700,color:T.t2}},"Enviar contacto"),
                 React.createElement("button",{onClick:function(){setShowContactPicker(false)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:14}))),
-              React.createElement("input",{value:contactPickerSearch,onChange:function(e){setContactPickerSearch(e.target.value)},placeholder:"Buscar…",style:Object.assign({},inp,{fontSize:12,marginBottom:6})}),
+              React.createElement("input",{value:contactPickerSearch,onChange:function(e){setContactPickerSearch(e.target.value)},placeholder:"Buscar…",style:Object.assign({},inp,{fontSize:12,marginBottom:8})}),
               React.createElement("div",{style:{maxHeight:120,overflowY:"auto"}},
                 filteredContactsForPicker.filter(function(c){return!selected||c.id!==selected.id}).slice(0,10).map(function(c){return React.createElement("div",{key:c.id,onClick:function(){handleShareContact(c.id)},style:{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",cursor:"pointer",borderRadius:6,fontSize:12,borderBottom:"1px solid "+T.bg}},React.createElement(Avatar,{name:c.name,channel:c.channel,size:26}),React.createElement("span",{style:{color:T.t2}},c.name))})
               )
@@ -1222,10 +1237,10 @@ function App(){
               React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:8}},
                 React.createElement("span",{style:{fontSize:12,fontWeight:700,color:T.t2}},"⏰ Recordatorio"),
                 React.createElement("button",{onClick:function(){setShowReminderForm(false)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:14}))),
-              React.createElement("div",{style:{display:"flex",gap:6,marginBottom:6}},
+              React.createElement("div",{style:{display:"flex",gap:8,marginBottom:8}},
                 React.createElement("input",{type:"date",value:reminderDate,onChange:function(e){setReminderDate(e.target.value)},style:Object.assign({},inp,{flex:1,fontSize:12})}),
                 React.createElement("input",{type:"time",value:reminderTime,onChange:function(e){setReminderTime(e.target.value)},style:Object.assign({},inp,{width:100,fontSize:12})})),
-              React.createElement("input",{value:reminderNote,onChange:function(e){setReminderNote(e.target.value)},placeholder:"Nota…",style:Object.assign({},inp,{fontSize:12,marginBottom:6})}),
+              React.createElement("input",{value:reminderNote,onChange:function(e){setReminderNote(e.target.value)},placeholder:"Nota…",style:Object.assign({},inp,{fontSize:12,marginBottom:8})}),
               React.createElement("button",{onClick:handleCreateReminder,disabled:!reminderDate,style:Object.assign({},btnP,{fontSize:12,padding:"6px 14px",opacity:reminderDate?1:0.5})},"Crear")
             ),
             /* Upload indicator */
@@ -1234,9 +1249,9 @@ function App(){
             /* Input row */
             React.createElement("div",{style:{display:"flex",gap:8,alignItems:"flex-end"}},
               React.createElement("button",{onClick:function(){setShowClipMenu(!showClipMenu);setShowContactPicker(false);setShowReminderForm(false)},
-                style:{width:36,height:36,borderRadius:"50%",border:"none",background:showClipMenu?T.accent:T.hover,color:showClipMenu?"#fff":T.t4,fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s",transform:showClipMenu?"rotate(45deg)":"none",fontWeight:300,lineHeight:1}},"+"),
+                style:{width:36,height:36,borderRadius:"50%",border:"none",background:showClipMenu?T.accent:T.hover,color:showClipMenu?"#fff":T.t4,fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s",transform:showClipMenu?"rotate(45deg)":"none",fontWeight:400,lineHeight:1}},"+"),
               React.createElement("textarea",{value:msgText,onChange:function(e){setMsgText(e.target.value)},onKeyDown:function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg()}},placeholder:"Escribir mensaje… (Enter para enviar)",rows:1,
-                style:{flex:1,resize:"none",border:"1px solid "+T.border,borderRadius:10,padding:"9px 14px",fontSize:13.5,fontFamily:"inherit",color:T.t1,outline:"none",minHeight:40,maxHeight:100,background:T.bg,lineHeight:1.5}}),
+                style:{flex:1,resize:"none",border:"1px solid "+T.border,borderRadius:10,padding:"8px 16px",fontSize:13.5,fontFamily:"inherit",color:T.t1,outline:"none",minHeight:40,maxHeight:100,background:T.bg,lineHeight:1.5}}),
               React.createElement("button",{onClick:sendMsg,
                 style:{width:38,height:38,borderRadius:10,border:"none",background:T.accent,color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
                 React.createElement(Icon,{name:"Send",size:15,color:"#fff"}))
@@ -1253,7 +1268,7 @@ function App(){
         showFilesPanel
           ? React.createElement(React.Fragment,null,
               /* Files panel header */
-              React.createElement("div",{style:{padding:"10px 14px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",gap:8,flexShrink:0}},
+              React.createElement("div",{style:{padding:"8px 16px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",gap:8,flexShrink:0}},
                 React.createElement(Icon,{name:"Paperclip",size:14,color:T.accent}),
                 React.createElement("span",{style:{fontSize:13,fontWeight:700,color:T.t1,flex:1}},"Archivos "+(filesData.length>0?"("+filesData.length+")":"")),
                 React.createElement("button",{onClick:function(){setShowFilesPanel(false)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex",padding:2}},React.createElement(Icon,{name:"X",size:14}))),
@@ -1281,17 +1296,17 @@ function App(){
                         var groupIcons={cad:"FileText",pdf:"FileText",image:"Image",other:"Paperclip"};
                         return Object.keys(groups).filter(function(g){return groups[g].length>0}).map(function(g){
                           return React.createElement("div",{key:g},
-                            React.createElement("div",{style:{padding:"6px 14px 4px",fontSize:10,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.6}},groupLabels[g]+" ("+groups[g].length+")"),
+                            React.createElement("div",{style:{padding:"8px 12px 4px",fontSize:11,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.6}},groupLabels[g]+" ("+groups[g].length+")"),
                             groups[g].map(function(f){
                               var fN=f.original_filename||(f.media_url?f.media_url.split("/").pop():"Archivo");
                               var fInfo=getFileKind(fN);
                               var dlUrl="/api/files/"+f.id+"/download";
-                              return React.createElement("div",{key:f.id,style:{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",borderBottom:"1px solid "+T.border+"33"}},
+                              return React.createElement("div",{key:f.id,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 16px",borderBottom:"1px solid "+T.border+"33"}},
                                 React.createElement("div",{style:{width:28,height:28,borderRadius:6,background:fInfo.color+"15",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
                                   React.createElement(Icon,{name:"FileText",size:13,color:fInfo.color})),
                                 React.createElement("div",{style:{flex:1,minWidth:0}},
                                   React.createElement("div",{style:{fontSize:11,fontWeight:600,color:T.t2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},fN),
-                                  React.createElement("div",{style:{fontSize:10,color:T.t4,marginTop:1}},
+                                  React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:1}},
                                     f.created_at?new Date(f.created_at.replace(" ","T")+"Z").toLocaleDateString("es-AR",{day:"numeric",month:"short"}):"",
                                     f.size_bytes?" · "+formatFileSize(f.size_bytes):"")),
                                 React.createElement("a",{href:dlUrl,title:"Descargar",style:{color:T.t4,display:"flex",padding:4,borderRadius:4,flexShrink:0}},
@@ -1308,66 +1323,66 @@ function App(){
           [["info","Contexto 360°"],["agents","Equipo"]].map(function(t){return React.createElement("button",{key:t[0],onClick:function(){setTab(t[0])},
             style:{flex:1,padding:"10px 8px",fontSize:11,textAlign:"center",cursor:"pointer",color:tab===t[0]?T.t1:T.t4,background:"none",border:"none",
               borderBottom:"2px solid "+(tab===t[0]?T.accent:"transparent"),fontWeight:tab===t[0]?700:400,fontFamily:"inherit",letterSpacing:.2}},t[1]);})),
-        React.createElement("div",{style:{flex:1,overflowY:"auto",padding:14}},
+        React.createElement("div",{style:{flex:1,overflowY:"auto",padding:16}},
           /* INFO TAB */
           tab==="info"&&selected&&React.createElement("div",{style:{animation:"slideIn .2s ease"}},
             /* Profile header */
-            React.createElement("div",{style:{textAlign:"center",marginBottom:16,paddingBottom:14,borderBottom:"1px solid "+T.border}},
+            React.createElement("div",{style:{textAlign:"center",marginBottom:16,paddingBottom:16,borderBottom:"1px solid "+T.border}},
               React.createElement("div",{style:{display:"flex",justifyContent:"center",marginBottom:10}},React.createElement(Avatar,{name:selected.name,channel:selected.channel,size:54,profilePic:selected.profile_picture_url})),
               React.createElement("div",{style:{fontSize:14,fontWeight:700,color:T.t1}},selected.name),
               React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},ch?ch.label:""),
-              React.createElement("div",{style:{display:"flex",justifyContent:"center",gap:5,marginTop:8}},
+              React.createElement("div",{style:{display:"flex",justifyContent:"center",gap:4,marginTop:8}},
                 ["lead","cliente","cerrado"].map(function(s){return React.createElement("button",{key:s,onClick:function(){updateContact(selected.id,{status:s})},
-                  style:{fontSize:10,padding:"3px 10px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontWeight:600,
+                  style:{fontSize:11,padding:"4px 8px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontWeight:600,
                     border:selected.status===s?"1px solid "+T.accent+"55":"1px solid "+T.border,
                     background:selected.status===s?T.accentBg:"transparent",color:selected.status===s?T.accent:T.t4}},
                   s.charAt(0).toUpperCase()+s.slice(1));}))
             ),
             /* Pipeline */
             React.createElement("div",{style:{marginBottom:16}},
-              React.createElement("div",{style:{fontSize:10,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}},"Pipeline de venta"),
+              React.createElement("div",{style:{fontSize:11,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}},"Pipeline de venta"),
               React.createElement(StageProgress,{stage:selected.conversation_stage||"consulta"}),
-              React.createElement("div",{style:{fontSize:11,color:(STAGE_CONFIG[selected.conversation_stage||"consulta"]||{}).color||T.t4,fontWeight:600,marginTop:6}},(STAGE_CONFIG[selected.conversation_stage]||{label:"Consulta inicial"}).label)
+              React.createElement("div",{style:{fontSize:11,color:(STAGE_CONFIG[selected.conversation_stage||"consulta"]||{}).color||T.t4,fontWeight:600,marginTop:8}},(STAGE_CONFIG[selected.conversation_stage]||{label:"Consulta inicial"}).label)
             ),
             /* Stage actions */
-            React.createElement("div",{style:{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}},
+            React.createElement("div",{style:{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}},
               (selected.conversation_stage==="datos_completos"||selected.conversation_stage==="recopilando_datos")&&
-                React.createElement("button",{onClick:function(){changeStage("presupuesto_enviado")},style:{fontSize:10,padding:"5px 10px",borderRadius:8,border:"1px solid "+T.blue+"44",background:"rgba(59,130,246,0.1)",color:T.blue,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}},"📩 Pres. enviado"),
+                React.createElement("button",{onClick:function(){changeStage("presupuesto_enviado")},style:{fontSize:11,padding:"4px 8px",borderRadius:8,border:"1px solid "+T.blue+"44",background:"rgba(59,130,246,0.1)",color:T.blue,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}},"📩 Pres. enviado"),
               selected.conversation_stage!=="cerrado_ganado"&&selected.conversation_stage!=="cerrado_perdido"&&
-                React.createElement("button",{onClick:function(){changeStage("cerrado_ganado")},style:{fontSize:10,padding:"5px 10px",borderRadius:8,border:"1px solid "+T.green+"44",background:T.greenBg,color:T.green,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}},"🎉 Ganado"),
+                React.createElement("button",{onClick:function(){changeStage("cerrado_ganado")},style:{fontSize:11,padding:"4px 8px",borderRadius:8,border:"1px solid "+T.green+"44",background:T.greenBg,color:T.green,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}},"🎉 Ganado"),
               selected.conversation_stage!=="cerrado_ganado"&&selected.conversation_stage!=="cerrado_perdido"&&
-                React.createElement("button",{onClick:function(){setShowLostReasons(!showLostReasons)},style:{fontSize:10,padding:"5px 10px",borderRadius:8,border:"1px solid "+T.red+"44",background:T.redBg,color:T.red,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}},"✗ Perdido"),
+                React.createElement("button",{onClick:function(){setShowLostReasons(!showLostReasons)},style:{fontSize:11,padding:"4px 8px",borderRadius:8,border:"1px solid "+T.red+"44",background:T.redBg,color:T.red,cursor:"pointer",fontWeight:700,fontFamily:"inherit"}},"✗ Perdido"),
               (selected.conversation_stage==="cerrado_ganado"||selected.conversation_stage==="cerrado_perdido"||selected.conversation_stage==="sin_respuesta")&&
-                React.createElement("button",{onClick:function(){changeStage("consulta")},style:Object.assign({},btnS,{fontSize:10,padding:"5px 10px"})},"↺ Reiniciar")
+                React.createElement("button",{onClick:function(){changeStage("consulta")},style:Object.assign({},btnS,{fontSize:11,padding:"4px 8px"})},"↺ Reiniciar")
             ),
             showLostReasons&&React.createElement("div",{style:{padding:10,background:T.redBg,border:"1px solid "+T.red+"22",borderRadius:8,marginBottom:12}},
-              React.createElement("div",{style:{fontSize:10,fontWeight:700,color:T.red,marginBottom:6,textTransform:"uppercase",letterSpacing:.4}},"Motivo de pérdida"),
+              React.createElement("div",{style:{fontSize:11,fontWeight:700,color:T.red,marginBottom:8,textTransform:"uppercase",letterSpacing:.4}},"Motivo de pérdida"),
               Object.entries(LOST_REASONS).map(function(e){return React.createElement("button",{key:e[0],onClick:function(){changeStage("cerrado_perdido",e[0])},style:{display:"block",width:"100%",textAlign:"left",padding:"6px 8px",fontSize:12,border:"none",background:"transparent",color:T.t2,cursor:"pointer",borderRadius:6,fontFamily:"inherit"}},e[1])})
             ),
             /* Contact info */
-            React.createElement("div",{style:{marginBottom:14,paddingBottom:14,borderBottom:"1px solid "+T.border}},
-              React.createElement("div",{style:{fontSize:10,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}},"Información"),
-              [["Email",selected.email],["Teléfono",selected.phone],["Creado",selected.created_at?selected.created_at.substring(0,10):"-"]].map(function(p){return React.createElement("div",{key:p[0],style:{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid "+T.bg,fontSize:11}},React.createElement("span",{style:{color:T.t4}},p[0]),React.createElement("span",{style:{color:T.t2,fontWeight:500,maxWidth:"55%",textOverflow:"ellipsis",overflow:"hidden"}},p[1]||"—"))})
+            React.createElement("div",{style:{marginBottom:16,paddingBottom:16,borderBottom:"1px solid "+T.border}},
+              React.createElement("div",{style:{fontSize:11,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}},"Información"),
+              [["Email",selected.email],["Teléfono",selected.phone],["Creado",selected.created_at?selected.created_at.substring(0,10):"-"]].map(function(p){return React.createElement("div",{key:p[0],style:{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid "+T.bg,fontSize:11}},React.createElement("span",{style:{color:T.t4}},p[0]),React.createElement("span",{style:{color:T.t2,fontWeight:600,maxWidth:"55%",textOverflow:"ellipsis",overflow:"hidden"}},p[1]||"—"))})
             ),
             /* Notes */
-            selected.notes&&React.createElement("div",{style:{marginBottom:14}},
-              React.createElement("div",{style:{fontSize:10,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.7,marginBottom:6}},"Notas"),
+            selected.notes&&React.createElement("div",{style:{marginBottom:16}},
+              React.createElement("div",{style:{fontSize:11,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}},"Notas"),
               React.createElement("div",{style:{fontSize:12,color:T.t2,padding:"8px 10px",borderRadius:8,background:T.bg,border:"1px solid "+T.border,lineHeight:1.5}},selected.notes)
             ),
             /* Actions */
-            React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6}},
-              React.createElement("button",{onClick:function(){openNewQuote(selected.id);setView("quotes")},style:{width:"100%",padding:"9px 12px",fontSize:12,borderRadius:8,border:"1px solid "+T.amber+"33",background:T.amberBg,color:T.amber,cursor:"pointer",fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"FileText",size:14,color:T.amber}),"Crear presupuesto"),
-              React.createElement("button",{onClick:regenerateFicha,style:{width:"100%",padding:"9px 12px",fontSize:12,borderRadius:8,border:"1px solid "+T.accent+"33",background:T.accentBg,color:T.accent,cursor:"pointer",fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"Sparkles",size:14,color:T.accent}),"Generar ficha")
+            React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+              React.createElement("button",{onClick:function(){openNewQuote(selected.id);setView("quotes")},style:{width:"100%",padding:"8px 12px",fontSize:12,borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:"pointer",fontWeight:600,fontFamily:"inherit",display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"FileText",size:14,color:T.t3}),"Crear presupuesto"),
+              React.createElement("button",{onClick:regenerateFicha,style:{width:"100%",padding:"8px 12px",fontSize:12,borderRadius:8,border:"1px solid "+T.accent+"33",background:T.accentBg,color:T.accent,cursor:"pointer",fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"Sparkles",size:14,color:T.accent}),"Generar ficha")
             )
           ),
           /* AGENTS TAB */
           tab==="agents"&&React.createElement("div",{style:{animation:"slideIn .2s ease"}},
-            React.createElement("div",{style:{fontSize:10,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}},"Equipo activo"),
-            usersList.filter(function(u){return u.is_active}).map(function(u){var deptData=DEPARTMENTS[u.department]||{};return React.createElement("div",{key:u.id,style:{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:"1px solid "+T.border+"55"}},
+            React.createElement("div",{style:{fontSize:11,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}},"Equipo activo"),
+            usersList.filter(function(u){return u.is_active}).map(function(u){var deptData=DEPARTMENTS[u.department]||{};return React.createElement("div",{key:u.id,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid "+T.border+"55"}},
               React.createElement(Avatar,{name:u.name,size:30}),
               React.createElement("div",{style:{flex:1}},
                 React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t2}},u.name),
-                React.createElement("div",{style:{fontSize:10,color:T.t4}},"@"+u.username+(deptData.label?" · "+deptData.label:""))),
+                React.createElement("div",{style:{fontSize:11,color:T.t4}},"@"+u.username+(deptData.label?" · "+deptData.label:""))),
               React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:T.green}}))})
           )
         )
@@ -1377,13 +1392,13 @@ function App(){
     /* ── QUOTES VIEW ─────────────────────────── */
     view==="quotes"&&React.createElement("div",{style:{flex:1,padding:28,overflowY:"auto",background:T.bg}},
       React.createElement("div",{style:{maxWidth:1000,margin:"0 auto"}},
-        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}},
-          React.createElement("div",null,React.createElement("h1",{style:{fontSize:20,fontWeight:800,color:T.t1}},"Presupuestos"),React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:2}},"Gestión de cotizaciones")),
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}},
+          React.createElement("div",null,React.createElement("h1",{style:{fontSize:20,fontWeight:700,color:T.t1}},"Presupuestos"),React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:2}},"Gestión de cotizaciones")),
           React.createElement("button",{onClick:function(){showQuoteForm?(setShowQuoteForm(false),resetQuoteForm()):openNewQuote()},style:Object.assign({},btnP,{background:showQuoteForm?T.red:T.accent})},showQuoteForm?"Cancelar":"+ Nuevo")),
-        quoteStats&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:22}},
-          [["Total",quoteStats.total,T.t1],["Alternativas",quoteStats.totalAlternatives||0,T.t2],["Monto",formatMoney(quoteStats.totalAmount),T.green],["Aprobados",(quoteStats.approvedRate||0)+"%",T.accent],["Seguimientos",(quoteStats.upcomingFollowups||[]).length,T.amber]].map(function(p){return React.createElement("div",{key:p[0],style:{background:T.card,borderRadius:12,border:"1px solid "+T.border,padding:"16px 18px"}},React.createElement("div",{style:{fontSize:26,fontWeight:800,color:p[2],letterSpacing:-0.5}},p[1]),React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:3}},p[0]))})
+        quoteStats&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:24}},
+          [["Total",quoteStats.total,T.t1],["Alternativas",quoteStats.totalAlternatives||0,T.t2],["Monto",formatMoney(quoteStats.totalAmount),T.green],["Aprobados",(quoteStats.approvedRate||0)+"%",T.accent],["Seguimientos",(quoteStats.upcomingFollowups||[]).length,T.amber]].map(function(p){return React.createElement("div",{key:p[0],style:{background:T.card,borderRadius:12,border:"1px solid "+T.border,padding:"16px 18px"}},React.createElement("div",{style:{fontSize:26,fontWeight:700,color:p[2],letterSpacing:-0.5}},p[1]),React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:4}},p[0]))})
         ),
-        showQuoteForm&&React.createElement("div",{style:{background:T.card,borderRadius:12,border:"1px solid "+T.border,padding:22,marginBottom:20}},
+        showQuoteForm&&React.createElement("div",{style:{background:T.card,borderRadius:12,border:"1px solid "+T.border,padding:24,marginBottom:20}},
           React.createElement("div",{style:{fontSize:14,fontWeight:700,color:T.t1,marginBottom:16}},editingQuote?"Editar presupuesto #"+editingQuote.id:"Nuevo presupuesto"),
           React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
             React.createElement("div",null,React.createElement("label",{style:lbl},"Cliente"),React.createElement("select",{value:qfContactId,onChange:function(e){setQfContactId(e.target.value)},style:sel},React.createElement("option",{value:""},"Seleccionar…"),contacts.map(function(c){return React.createElement("option",{key:c.id,value:c.id},c.name)}))),
@@ -1406,18 +1421,18 @@ function App(){
         React.createElement("div",{style:{background:T.card,borderRadius:12,border:"1px solid "+T.border,overflow:"hidden"}},
           React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:13}},
             React.createElement("thead",null,React.createElement("tr",{style:{background:T.bg}},
-              ["#","Cliente","Descripción","Monto","Estado","Vendedor","Acciones"].map(function(h){return React.createElement("th",{key:h,style:{padding:"10px 14px",textAlign:"left",fontSize:10,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.5,borderBottom:"1px solid "+T.border}},h)}))),
+              ["#","Cliente","Descripción","Monto","Estado","Vendedor","Acciones"].map(function(h){return React.createElement("th",{key:h,style:{padding:"8px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:T.t4,textTransform:"uppercase",letterSpacing:.5,borderBottom:"1px solid "+T.border}},h)}))),
             React.createElement("tbody",null,
               quotes.filter(function(q){if(!quoteSearch)return true;var s=quoteSearch.toLowerCase();return(q.contact_name&&q.contact_name.toLowerCase().indexOf(s)!==-1)||(q.description&&q.description.toLowerCase().indexOf(s)!==-1)}).map(function(q,i){
                 var qs=QUOTE_STATUS[q.status]||{};
                 return React.createElement("tr",{key:q.id,style:{borderBottom:"1px solid "+T.border+"44",background:i%2===0?"transparent":T.bg+"44"}},
-                  React.createElement("td",{style:{padding:"11px 14px",color:T.t4,fontSize:12}},"#"+q.id),
-                  React.createElement("td",{style:{padding:"11px 14px",fontWeight:600,color:T.t1}},q.contact_name),
-                  React.createElement("td",{style:{padding:"11px 14px",color:T.t3,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},q.description||"—"),
-                  React.createElement("td",{style:{padding:"11px 14px",fontWeight:700,color:T.t1}},formatMoney(q.amount)),
-                  React.createElement("td",{style:{padding:"11px 14px"}},React.createElement("span",{style:{fontSize:11,padding:"3px 10px",borderRadius:10,background:qs.bg||"transparent",color:qs.color||T.t4,fontWeight:700}},qs.label||q.status)),
-                  React.createElement("td",{style:{padding:"11px 14px",color:T.t3}},q.created_by),
-                  React.createElement("td",{style:{padding:"11px 14px"}},React.createElement("div",{style:{display:"flex",gap:5}},
+                  React.createElement("td",{style:{padding:"12px 16px",color:T.t4,fontSize:12}},"#"+q.id),
+                  React.createElement("td",{style:{padding:"12px 16px",fontWeight:600,color:T.t1}},q.contact_name),
+                  React.createElement("td",{style:{padding:"12px 16px",color:T.t3,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},q.description||"—"),
+                  React.createElement("td",{style:{padding:"12px 16px",fontWeight:700,color:T.t1}},formatMoney(q.amount)),
+                  React.createElement("td",{style:{padding:"12px 16px"}},React.createElement("span",{style:{fontSize:11,padding:"4px 8px",borderRadius:10,background:qs.bg||"transparent",color:qs.color||T.t4,fontWeight:700}},qs.label||q.status)),
+                  React.createElement("td",{style:{padding:"12px 16px",color:T.t3}},q.created_by),
+                  React.createElement("td",{style:{padding:"12px 16px"}},React.createElement("div",{style:{display:"flex",gap:4}},
                     React.createElement("button",{onClick:function(){openEditQuote(q)},style:Object.assign({},btnS,{padding:"4px 10px"})},React.createElement(Icon,{name:"FileText",size:12})),
                     React.createElement("button",{onClick:function(){deleteQuote(q.id)},style:Object.assign({},btnS,{padding:"4px 10px",borderColor:T.red+"33",color:T.red})},React.createElement(Icon,{name:"X",size:12}))))
                 );
@@ -1433,9 +1448,9 @@ function App(){
     view==="routing"&&React.createElement("div",{style:{flex:1,padding:28,overflowY:"auto",background:T.bg}},
       React.createElement("div",{style:{maxWidth:800,margin:"0 auto"}},
         React.createElement("div",{style:{marginBottom:24}},
-          React.createElement("h1",{style:{fontSize:20,fontWeight:800,color:T.t1}},"Motor de Routing IA"),
+          React.createElement("h1",{style:{fontSize:20,fontWeight:700,color:T.t1}},"Motor de Routing IA"),
           React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:2}},"Clasificación automática y derivación por Claudia")),
-        user.role==="admin"&&React.createElement("div",{style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:22,marginBottom:20}},
+        user.role==="admin"&&React.createElement("div",{style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:24,marginBottom:20}},
           React.createElement("div",{style:{fontSize:14,fontWeight:700,color:T.t1,marginBottom:16,display:"flex",alignItems:"center",gap:8}},
             React.createElement(Icon,{name:"Zap",size:16,color:T.neutral}),"Respuesta Automática por Canal"),
           VISIBLE_CHANNELS.map(function(chKey){var chData=CHANNELS[chKey];var setting=autoReply.find(function(a){return a.channel===chKey});var enabled=setting?setting.enabled:0;
@@ -1448,7 +1463,7 @@ function App(){
               React.createElement("label",{className:"switch"},React.createElement("input",{type:"checkbox",checked:!!enabled,onChange:function(){toggleAutoReply(chKey,enabled)}}),React.createElement("span",{className:"slider"})));})),
         React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}},
           Object.entries(DEPARTMENTS).map(function(e){var k=e[0];var d=e[1];var count=contacts.filter(function(c){return c.department===k}).length;
-            return React.createElement("div",{key:k,style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:18}},
+            return React.createElement("div",{key:k,style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:20}},
               React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:10}},
                 React.createElement("div",{style:{width:38,height:38,borderRadius:10,background:d.bg||d.color+"15",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}},d.icon),
                 React.createElement("div",null,React.createElement("div",{style:{fontSize:14,fontWeight:700,color:T.t1}},d.label),React.createElement("div",{style:{fontSize:11,color:T.t4}},count+" conversaciones activas"))),
@@ -1463,19 +1478,19 @@ function App(){
     view==="metrics"&&React.createElement("div",{style:{flex:1,padding:28,overflowY:"auto",background:T.bg}},
       React.createElement("div",{style:{maxWidth:960,margin:"0 auto"}},
         React.createElement("div",{style:{marginBottom:24}},
-          React.createElement("h1",{style:{fontSize:20,fontWeight:800,color:T.t1}},"Métricas operativas"),
+          React.createElement("h1",{style:{fontSize:20,fontWeight:700,color:T.t1}},"Métricas operativas"),
           React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:2}},new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}))),
         metrics?React.createElement(React.Fragment,null,
-          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}},
+          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,marginBottom:20}},
             [["Mensajes",metrics.totalMessages,T.accent,"MessageSquare"],["Contactos",metrics.totalContacts,T.neutral,"User"],["Conversaciones",metrics.totalConversations,T.green,"MessageSquare"]].map(function(p){
               return React.createElement("div",{key:p[0],style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:"20px 22px",display:"flex",alignItems:"flex-start",justifyContent:"space-between"}},
-                React.createElement("div",null,React.createElement("div",{style:{fontSize:30,fontWeight:800,color:T.t1,letterSpacing:-1}},p[1]),React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:4}},p[0])),
+                React.createElement("div",null,React.createElement("div",{style:{fontSize:30,fontWeight:700,color:T.t1,letterSpacing:-1}},p[1]),React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:4}},p[0])),
                 React.createElement("div",{style:{width:36,height:36,borderRadius:10,background:p[2]+"18",display:"flex",alignItems:"center",justifyContent:"center"}},React.createElement(Icon,{name:p[3],size:18,color:p[2]})));
             })),
-          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}},
+          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}},
             /* By channel */
             React.createElement("div",{style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:"18px 20px"}},
-              React.createElement("div",{style:{fontSize:13,fontWeight:700,color:T.t1,marginBottom:14,display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"BarChart2",size:15,color:T.accent}),"Por canal"),
+              React.createElement("div",{style:{fontSize:13,fontWeight:700,color:T.t1,marginBottom:16,display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"BarChart2",size:15,color:T.t3}),"Por canal"),
               (metrics.byChannel||[]).map(function(c){var chData=CHANNELS[c.channel];var max=(metrics.byChannel||[]).reduce(function(a,x){return Math.max(a,x.count)},1);return React.createElement("div",{key:c.channel,style:{marginBottom:10}},
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:4}},
                   React.createElement("span",{style:{fontSize:12,color:T.t3}},(chData?chData.label:c.channel)),
@@ -1485,7 +1500,7 @@ function App(){
               );})),
             /* By dept */
             React.createElement("div",{style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:"18px 20px"}},
-              React.createElement("div",{style:{fontSize:13,fontWeight:700,color:T.t1,marginBottom:14,display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"Users",size:15,color:T.neutral}),"Por área"),
+              React.createElement("div",{style:{fontSize:13,fontWeight:700,color:T.t1,marginBottom:16,display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"Users",size:15,color:T.neutral}),"Por área"),
               (metrics.byDepartment||[]).map(function(d){var deptData=DEPARTMENTS[d.department]||{};var max=(metrics.byDepartment||[]).reduce(function(a,x){return Math.max(a,x.count)},1);return React.createElement("div",{key:d.department,style:{marginBottom:10}},
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:4}},
                   React.createElement("span",{style:{fontSize:12,color:T.t3}},deptData.label||d.department),
@@ -1495,7 +1510,7 @@ function App(){
           ),
           /* Funnel */
           (metrics.byStage||[]).length>0&&React.createElement("div",{style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:"18px 20px"}},
-            React.createElement("div",{style:{fontSize:13,fontWeight:700,color:T.t1,marginBottom:14,display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"Filter",size:15,color:T.amber}),"Embudo de ventas"),
+            React.createElement("div",{style:{fontSize:13,fontWeight:700,color:T.t1,marginBottom:16,display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"Filter",size:15,color:T.t3}),"Embudo de ventas"),
             React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8}},
               (metrics.byStage||[]).map(function(s){var sc=STAGE_CONFIG[s.conversation_stage]||{label:s.conversation_stage,color:T.t4};var max=(metrics.byStage||[]).reduce(function(a,x){return Math.max(a,x.count)},1);
                 return React.createElement("div",{key:s.conversation_stage},
@@ -1514,10 +1529,10 @@ function App(){
     /* ── USERS VIEW ──────────────────────────── */
     view==="users"&&React.createElement("div",{style:{flex:1,padding:28,overflowY:"auto",background:T.bg}},
       React.createElement("div",{style:{maxWidth:800,margin:"0 auto"}},
-        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}},
-          React.createElement("div",null,React.createElement("h1",{style:{fontSize:20,fontWeight:800,color:T.t1}},"Usuarios"),React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:2}},"Gestión del equipo")),
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}},
+          React.createElement("div",null,React.createElement("h1",{style:{fontSize:20,fontWeight:700,color:T.t1}},"Usuarios"),React.createElement("div",{style:{fontSize:12,color:T.t4,marginTop:2}},"Gestión del equipo")),
           React.createElement("button",{onClick:function(){setShowNewForm(!showNewForm)},style:Object.assign({},btnP,{background:showNewForm?T.red:T.accent})},showNewForm?"Cancelar":"+ Nuevo usuario")),
-        showNewForm&&React.createElement("div",{style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:22,marginBottom:20}},
+        showNewForm&&React.createElement("div",{style:{background:T.card,borderRadius:14,border:"1px solid "+T.border,padding:24,marginBottom:20}},
           React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
             React.createElement("div",null,React.createElement("label",{style:lbl},"Nombre"),React.createElement("input",{value:nfName,onChange:function(e){setNfName(e.target.value)},style:inp,placeholder:"Nombre completo"})),
             React.createElement("div",null,React.createElement("label",{style:lbl},"Usuario"),React.createElement("input",{value:nfUsername,onChange:function(e){setNfUsername(e.target.value)},style:inp,placeholder:"nombre.apellido"})),
@@ -1535,7 +1550,7 @@ function App(){
                 deptData.label&&React.createElement(Badge,{color:deptData.color||T.t4},deptData.label),
                 !u.is_active&&React.createElement(Badge,{color:T.red},"Inactivo")),
               React.createElement("div",{style:{fontSize:11,color:T.t4}},"@"+u.username)),
-            React.createElement("div",{style:{display:"flex",gap:6}},
+            React.createElement("div",{style:{display:"flex",gap:8}},
               React.createElement("button",{onClick:function(){resetUserPassword(u)},style:Object.assign({},btnS)},React.createElement(Icon,{name:"Key",size:13})),
               React.createElement("button",{onClick:function(){toggleUserActive(u)},style:Object.assign({},btnS,{borderColor:u.is_active?T.amber+"44":T.green+"44",color:u.is_active?T.amber:T.green})},u.is_active?"Desactivar":"Activar"))
           );})
@@ -1553,10 +1568,10 @@ function App(){
     /* ── MODAL ENVIAR PRESUPUESTO (APB - varios PDF, uno por mensaje) ──────── */
     showPresupModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget&&!presupSending)closePresupModal()}},
       React.createElement("div",{style:{background:T.card,border:"1px solid "+T.border,borderRadius:16,padding:24,width:"100%",maxWidth:480,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}},
-        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
-          React.createElement("div",{style:{fontSize:16,fontWeight:800,color:T.t1}},"Enviar presupuesto"),
+        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}},
+          React.createElement("div",{style:{fontSize:16,fontWeight:700,color:T.t1}},"Enviar presupuesto"),
           React.createElement("button",{onClick:closePresupModal,disabled:presupSending,style:{border:"none",background:"none",cursor:presupSending?"default":"pointer",color:T.t4,display:"flex",opacity:presupSending?0.4:1}},React.createElement(Icon,{name:"X",size:18}))),
-        React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:14}},"Para ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||"el cliente"),". Podés agregar varios PDF: cada uno se envía como un mensaje separado con la plantilla aprobada."),
+        React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:16}},"Para ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||"el cliente"),". Podés agregar varios PDF: cada uno se envía como un mensaje separado con la plantilla aprobada."),
         /* Zona de drop / selección */
         React.createElement("div",{
             onClick:function(){if(!presupSending&&presupFileInputRef.current)presupFileInputRef.current.click()},
@@ -1564,11 +1579,11 @@ function App(){
             onDrop:function(e){e.preventDefault();if(!presupSending)addPresupFiles(e.dataTransfer.files)},
             style:{border:"2px dashed "+T.border,borderRadius:12,padding:"22px 16px",textAlign:"center",cursor:presupSending?"default":"pointer",background:T.bg2,marginBottom:12,opacity:presupSending?0.5:1}},
             React.createElement(Icon,{name:"FileText",size:28,color:T.t4}),
-            React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t2,marginTop:6}},"Arrastrá uno o varios PDF acá"),
+            React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t2,marginTop:8}},"Arrastrá uno o varios PDF acá"),
             React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},"o hacé clic para elegirlos · solo PDF · cada PDF se envía como un mensaje aparte")),
         React.createElement("input",{ref:presupFileInputRef,type:"file",accept:"application/pdf,.pdf",multiple:true,style:{display:"none"},onChange:function(e){addPresupFiles(e.target.files);e.target.value=""}}),
         /* Lista de archivos cargados */
-        presupFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:12,maxHeight:240,overflowY:"auto"}},
+        presupFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:240,overflowY:"auto"}},
           presupFiles.map(function(p,idx){
             var statusColor=p.error?T.red:(p.uploading?T.t4:"#1D9E75");
             return React.createElement("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:p.error?T.redBg:(p.url?"#1D9E7510":T.bg2),borderRadius:10,border:"1px solid "+(p.error?T.red+"44":(p.url?"#1D9E7544":T.border))}},
@@ -1576,33 +1591,33 @@ function App(){
               React.createElement(Icon,{name:p.uploading?"Clock":(p.error?"X":"FileText"),size:18,color:statusColor}),
               React.createElement("div",{style:{flex:1,minWidth:0}},
                 React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},p.file.name),
-                React.createElement("div",{style:{fontSize:10,color:statusColor}},p.uploading?"Cargando…":(p.error?("Error: "+p.error):"Listo"))),
+                React.createElement("div",{style:{fontSize:11,color:statusColor}},p.uploading?"Cargando…":(p.error?("Error: "+p.error):"Listo"))),
               !presupSending&&React.createElement("button",{onClick:function(){removePresupFile(p.id)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:14})));
           })),
         presupSending&&presupProgress.total>0&&React.createElement("div",{style:{fontSize:12,color:T.t3,marginBottom:10,textAlign:"center"}},"Enviando "+presupProgress.sent+" de "+presupProgress.total+"…"),
-        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:6}},
-          React.createElement("button",{onClick:closePresupModal,disabled:presupSending,style:{fontSize:13,fontWeight:600,padding:"9px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:presupSending?"default":"pointer",fontFamily:"inherit",opacity:presupSending?0.5:1}},"Cancelar"),
-          React.createElement("button",{onClick:handleSendPresup,disabled:presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}),style:{fontSize:13,fontWeight:700,padding:"9px 18px",borderRadius:8,border:"none",background:(presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}))?T.t4:"#1D9E75",color:"#fff",cursor:(presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}))?"default":"pointer",fontFamily:"inherit",opacity:(presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}))?0.5:1,display:"flex",alignItems:"center",gap:6}},
+        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:8}},
+          React.createElement("button",{onClick:closePresupModal,disabled:presupSending,style:{fontSize:13,fontWeight:600,padding:"8px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:presupSending?"default":"pointer",fontFamily:"inherit",opacity:presupSending?0.5:1}},"Cancelar"),
+          React.createElement("button",{onClick:handleSendPresup,disabled:presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}),style:{fontSize:13,fontWeight:700,padding:"8px 20px",borderRadius:8,border:"none",background:(presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}))?T.t4:"#1D9E75",color:"#fff",cursor:(presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}))?"default":"pointer",fontFamily:"inherit",opacity:(presupFiles.length===0||presupSending||presupFiles.some(function(p){return p.uploading||!p.url}))?0.5:1,display:"flex",alignItems:"center",gap:8}},
             React.createElement(Icon,{name:"Send",size:14,color:"#fff"}),presupSending?"Enviando…":("Enviar "+(presupFiles.length>1?presupFiles.length+" presupuestos":"presupuesto"))))
       )),
 
     /* ── MODAL ENVIAR DOCUMENTACIÓN (varios PDF unidos) ──────── */
     showDocModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget&&!docSending)closeDocModal()}},
       React.createElement("div",{style:{background:T.card,border:"1px solid "+T.border,borderRadius:16,padding:24,width:"100%",maxWidth:480,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}},
-        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
-          React.createElement("div",{style:{fontSize:16,fontWeight:800,color:T.t1}},"Enviar documentación"),
+        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}},
+          React.createElement("div",{style:{fontSize:16,fontWeight:700,color:T.t1}},"Enviar documentación"),
           React.createElement("button",{onClick:closeDocModal,disabled:docSending,style:{border:"none",background:"none",cursor:docSending?"default":"pointer",color:T.t4,display:"flex",opacity:docSending?0.4:1}},React.createElement(Icon,{name:"X",size:18}))),
-        React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:14}},"Para ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||"el cliente"),". Facturas, recibos, comprobantes. Si agregás varios PDF se unen en uno solo antes de enviar."),
+        React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:16}},"Para ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||"el cliente"),". Facturas, recibos, comprobantes. Si agregás varios PDF se unen en uno solo antes de enviar."),
         React.createElement("div",{
             onClick:function(){if(!docSending&&docFileInputRef.current)docFileInputRef.current.click()},
             onDragOver:function(e){e.preventDefault()},
             onDrop:function(e){e.preventDefault();if(!docSending)addDocFiles(e.dataTransfer.files)},
             style:{border:"2px dashed "+T.border,borderRadius:12,padding:"22px 16px",textAlign:"center",cursor:docSending?"default":"pointer",background:T.bg2,marginBottom:12,opacity:docSending?0.5:1}},
             React.createElement(Icon,{name:"Paperclip",size:28,color:T.t4}),
-            React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t2,marginTop:6}},"Arrastrá uno o varios PDF acá"),
+            React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t2,marginTop:8}},"Arrastrá uno o varios PDF acá"),
             React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},"o hacé clic para elegirlos · solo PDF · se unen en el orden que ves abajo")),
         React.createElement("input",{ref:docFileInputRef,type:"file",accept:"application/pdf,.pdf",multiple:true,style:{display:"none"},onChange:function(e){addDocFiles(e.target.files);e.target.value=""}}),
-        docFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:12,maxHeight:240,overflowY:"auto"}},
+        docFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:240,overflowY:"auto"}},
           docFiles.map(function(p,idx){
             var statusColor=p.error?T.red:(p.uploading?T.t4:T.blue);
             return React.createElement("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",background:p.error?T.redBg:(p.url?T.blue+"12":T.bg2),borderRadius:10,border:"1px solid "+(p.error?T.red+"44":(p.url?T.blue+"44":T.border))}},
@@ -1610,23 +1625,23 @@ function App(){
               React.createElement(Icon,{name:p.uploading?"Clock":(p.error?"X":"FileText"),size:18,color:statusColor}),
               React.createElement("div",{style:{flex:1,minWidth:0}},
                 React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},p.file.name),
-                React.createElement("div",{style:{fontSize:10,color:statusColor}},p.uploading?"Cargando…":(p.error?("Error: "+p.error):"Listo"))),
+                React.createElement("div",{style:{fontSize:11,color:statusColor}},p.uploading?"Cargando…":(p.error?("Error: "+p.error):"Listo"))),
               !docSending&&React.createElement(React.Fragment,null,
                 idx>0&&React.createElement("button",{onClick:function(){moveDocFile(p.id,-1)},title:"Subir",style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex",padding:2,fontSize:11}},"▲"),
                 idx<docFiles.length-1&&React.createElement("button",{onClick:function(){moveDocFile(p.id,1)},title:"Bajar",style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex",padding:2,fontSize:11}},"▼"),
                 React.createElement("button",{onClick:function(){removeDocFile(p.id)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:14}))));
           })),
-        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:6}},
-          React.createElement("button",{onClick:closeDocModal,disabled:docSending,style:{fontSize:13,fontWeight:600,padding:"9px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:docSending?"default":"pointer",fontFamily:"inherit",opacity:docSending?0.5:1}},"Cancelar"),
-          React.createElement("button",{onClick:handleSendDoc,disabled:docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}),style:{fontSize:13,fontWeight:700,padding:"9px 18px",borderRadius:8,border:"none",background:(docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}))?T.t4:T.blue,color:"#fff",cursor:(docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}))?"default":"pointer",fontFamily:"inherit",opacity:(docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}))?0.5:1,display:"flex",alignItems:"center",gap:6}},
+        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:8}},
+          React.createElement("button",{onClick:closeDocModal,disabled:docSending,style:{fontSize:13,fontWeight:600,padding:"8px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:docSending?"default":"pointer",fontFamily:"inherit",opacity:docSending?0.5:1}},"Cancelar"),
+          React.createElement("button",{onClick:handleSendDoc,disabled:docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}),style:{fontSize:13,fontWeight:700,padding:"8px 20px",borderRadius:8,border:"none",background:(docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}))?T.t4:T.blue,color:"#fff",cursor:(docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}))?"default":"pointer",fontFamily:"inherit",opacity:(docFiles.length===0||docSending||docFiles.some(function(p){return p.uploading||!p.url}))?0.5:1,display:"flex",alignItems:"center",gap:8}},
             React.createElement(Icon,{name:"Send",size:14,color:"#fff"}),docSending?"Enviando…":(docFiles.length>1?"Unir y enviar "+docFiles.length+" PDF":"Enviar documentación")))
       )),
 
     /* ── MODAL PEDIR COTIZACIÓN A PROVEEDOR (texto + adjuntos opcionales) ──────── */
     showSupModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget&&!supSending)closeSupModal()}},
       React.createElement("div",{style:{background:T.card,border:"1px solid "+T.border,borderRadius:16,padding:24,width:"100%",maxWidth:520,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}},
-        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
-          React.createElement("div",{style:{fontSize:16,fontWeight:800,color:T.t1}},"Pedir cotización"),
+        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}},
+          React.createElement("div",{style:{fontSize:16,fontWeight:700,color:T.t1}},"Pedir cotización"),
           React.createElement("button",{onClick:closeSupModal,disabled:supSending,style:{border:"none",background:"none",cursor:supSending?"default":"pointer",color:T.t4,display:"flex",opacity:supSending?0.4:1}},React.createElement(Icon,{name:"X",size:18}))),
         React.createElement("div",{style:{fontSize:13,color:T.t3,marginBottom:12}},"Para proveedor ",React.createElement("b",{style:{color:T.t2}},(selected&&selected.name)||""),"."),
         /* Estado de ventana 24hs */
@@ -1645,54 +1660,54 @@ function App(){
             onDrop:function(e){e.preventDefault();if(!supSending)addSupFiles(e.dataTransfer.files)},
             style:{border:"2px dashed "+T.border,borderRadius:10,padding:"14px 12px",textAlign:"center",cursor:supSending?"default":"pointer",background:T.bg2,marginBottom:10,opacity:supSending?0.5:1}},
             React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t3}},"Soltá o hacé clic para agregar archivos"),
-            React.createElement("div",{style:{fontSize:10,color:T.t4,marginTop:2}},"PDF o imágenes · 0 o varios")),
+            React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},"PDF o imágenes · 0 o varios")),
         React.createElement("input",{ref:supFileInputRef,type:"file",accept:"application/pdf,.pdf,image/*",multiple:true,style:{display:"none"},onChange:function(e){addSupFiles(e.target.files);e.target.value=""}}),
-        supFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:12,maxHeight:180,overflowY:"auto"}},
+        supFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:180,overflowY:"auto"}},
           supFiles.map(function(p){
             var statusColor=p.error?T.red:(p.uploading?T.t4:T.amber);
             return React.createElement("div",{key:p.id,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:p.error?T.redBg:(p.url?T.amberBg:T.bg2),borderRadius:8,border:"1px solid "+(p.error?T.red+"44":(p.url?T.amber+"33":T.border))}},
               React.createElement(Icon,{name:p.uploading?"Clock":(p.error?"X":(p.mediaType==="image"?"FileText":"Paperclip")),size:16,color:statusColor}),
               React.createElement("div",{style:{flex:1,minWidth:0}},
                 React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},p.file.name),
-                React.createElement("div",{style:{fontSize:10,color:statusColor}},p.uploading?"Cargando…":(p.error?("Error: "+p.error):"Listo"))),
+                React.createElement("div",{style:{fontSize:11,color:statusColor}},p.uploading?"Cargando…":(p.error?("Error: "+p.error):"Listo"))),
               !supSending&&React.createElement("button",{onClick:function(){removeSupFile(p.id)},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:14})));
           })),
-        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:6}},
-          React.createElement("button",{onClick:closeSupModal,disabled:supSending,style:{fontSize:13,fontWeight:600,padding:"9px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:supSending?"default":"pointer",fontFamily:"inherit",opacity:supSending?0.5:1}},"Cancelar"),
-          React.createElement("button",{onClick:handleSendSup,disabled:!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}),style:{fontSize:13,fontWeight:700,padding:"9px 18px",borderRadius:8,border:"none",background:(!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}))?T.t4:T.amber,color:"#fff",cursor:(!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}))?"default":"pointer",fontFamily:"inherit",opacity:(!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}))?0.5:1,display:"flex",alignItems:"center",gap:6}},
+        React.createElement("div",{style:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:8}},
+          React.createElement("button",{onClick:closeSupModal,disabled:supSending,style:{fontSize:13,fontWeight:600,padding:"8px 16px",borderRadius:8,border:"1px solid "+T.border,background:"transparent",color:T.t2,cursor:supSending?"default":"pointer",fontFamily:"inherit",opacity:supSending?0.5:1}},"Cancelar"),
+          React.createElement("button",{onClick:handleSendSup,disabled:!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}),style:{fontSize:13,fontWeight:700,padding:"8px 20px",borderRadius:8,border:"none",background:(!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}))?T.t4:T.amber,color:"#fff",cursor:(!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}))?"default":"pointer",fontFamily:"inherit",opacity:(!supText.trim()||supSending||supFiles.some(function(p){return p.uploading||!p.url}))?0.5:1,display:"flex",alignItems:"center",gap:8}},
             React.createElement(Icon,{name:"Send",size:14,color:"#fff"}),supSending?"Enviando…":"Enviar pedido"))
       )),
 
     showTemplateModal&&React.createElement("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20},onClick:function(e){if(e.target===e.currentTarget)closeTemplateModal()}},
-      React.createElement("div",{style:{background:T.card,borderRadius:14,padding:26,width:"100%",maxWidth:520,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.6)",border:"1px solid "+T.border}},
+      React.createElement("div",{style:{background:T.card,borderRadius:14,padding:24,width:"100%",maxWidth:520,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.6)",border:"1px solid "+T.border}},
         React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}},
-          React.createElement("div",{style:{fontSize:16,fontWeight:800,color:T.t1}},tmMode==="new"?"Plantilla a nuevo contacto":"Enviar plantilla WhatsApp"),
+          React.createElement("div",{style:{fontSize:16,fontWeight:700,color:T.t1}},tmMode==="new"?"Plantilla a nuevo contacto":"Enviar plantilla WhatsApp"),
           React.createElement("button",{onClick:closeTemplateModal,style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex"}},React.createElement(Icon,{name:"X",size:18}))),
         tmMode==="new"&&React.createElement("div",{style:{marginBottom:16,paddingBottom:16,borderBottom:"1px solid "+T.border}},
           React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
             React.createElement("input",{type:"text",value:tmName,onChange:function(e){setTmName(e.target.value)},placeholder:"Nombre completo",style:inp}),
             React.createElement("input",{type:"tel",value:tmPhone,onChange:function(e){setTmPhone(e.target.value)},placeholder:"Teléfono con código de país",style:inp}))),
-        tmMode==="existing"&&selected&&React.createElement("div",{style:{marginBottom:16,padding:"10px 14px",background:T.bg,borderRadius:10,border:"1px solid "+T.border}},
+        tmMode==="existing"&&selected&&React.createElement("div",{style:{marginBottom:16,padding:"8px 16px",background:T.bg,borderRadius:10,border:"1px solid "+T.border}},
           React.createElement("div",{style:{fontSize:13,fontWeight:700,color:T.t1}},selected.name),
           React.createElement("div",{style:{fontSize:11,color:T.t4}},selected.phone||selected.channel_id||"")),
         React.createElement("div",{style:{marginBottom:16}},
           React.createElement("label",{style:lbl},"Plantilla"),
           !templatesLoaded?React.createElement("div",{style:{color:T.t4,fontSize:12,padding:12,textAlign:"center"}},"Cargando plantillas…"):
           templates.length===0?React.createElement("div",{style:{color:T.red,fontSize:13,padding:12,background:T.redBg,borderRadius:8,textAlign:"center"}},"Sin plantillas aprobadas en tu cuenta"):
-          React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6,maxHeight:200,overflowY:"auto"}},
+          React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8,maxHeight:200,overflowY:"auto"}},
             templates.map(function(t){var isSel=tmTemplate&&tmTemplate.name===t.name;return React.createElement("div",{key:t.name,onClick:function(){setTmTemplate(t);setTmVariables({})},
-              style:{padding:"10px 14px",border:isSel?"2px solid "+T.green:"1px solid "+T.border,borderRadius:10,cursor:"pointer",background:isSel?T.greenBg:T.bg}},
+              style:{padding:"8px 16px",border:isSel?"2px solid "+T.green:"1px solid "+T.border,borderRadius:10,cursor:"pointer",background:isSel?T.greenBg:T.bg}},
               React.createElement("div",{style:{fontSize:13,fontWeight:700,color:T.t1}},t.name),
               React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},t.bodyText.substring(0,100)+"…"));}))
         ),
         tmTemplate&&tmTemplate.bodyVariablesCount>0&&React.createElement("div",{style:{marginBottom:16}},
           React.createElement("label",{style:lbl},"Variables"),
-          Array.from({length:tmTemplate.bodyVariablesCount}).map(function(_,idx){var n=idx+1;return React.createElement("input",{key:n,type:"text",value:tmVariables[n]||"",onChange:function(e){var nw=Object.assign({},tmVariables);nw[n]=e.target.value;setTmVariables(nw)},placeholder:"Variable {{"+n+"}}",style:Object.assign({},inp,{marginBottom:6})})})),
+          Array.from({length:tmTemplate.bodyVariablesCount}).map(function(_,idx){var n=idx+1;return React.createElement("input",{key:n,type:"text",value:tmVariables[n]||"",onChange:function(e){var nw=Object.assign({},tmVariables);nw[n]=e.target.value;setTmVariables(nw)},placeholder:"Variable {{"+n+"}}",style:Object.assign({},inp,{marginBottom:8})})})),
         tmTemplate&&tmTemplate.hasMediaHeader&&React.createElement("div",{style:{marginBottom:16}},
           React.createElement("label",{style:lbl},"Adjunto requerido"),
           React.createElement("input",{ref:tmFileInputRef,type:"file",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleTmFileSelect(e.target.files[0])}}),
           !tmFileVal?React.createElement("button",{onClick:function(){tmFileInputRef.current&&tmFileInputRef.current.click()},style:{width:"100%",padding:"14px",borderRadius:10,border:"2px dashed "+T.border,background:T.bg,color:T.t4,cursor:"pointer",fontSize:13,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}},React.createElement(Icon,{name:"Paperclip",size:15}),"Seleccionar archivo"):
-          React.createElement("div",{style:{padding:"10px 14px",background:T.greenBg,border:"1px solid "+T.green+"25",borderRadius:10,fontSize:12,color:T.green,display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"Check",size:14,color:T.green}),tmFileVal.name," "+(tmFileUrlVal?"(listo)":"(subiendo…)"))
+          React.createElement("div",{style:{padding:"8px 16px",background:T.greenBg,border:"1px solid "+T.green+"25",borderRadius:10,fontSize:12,color:T.green,display:"flex",alignItems:"center",gap:8}},React.createElement(Icon,{name:"Check",size:14,color:T.green}),tmFileVal.name," "+(tmFileUrlVal?"(listo)":"(subiendo…)"))
         ),
         tmTemplate&&React.createElement("div",{style:{marginBottom:18}},
           React.createElement("label",{style:lbl},"Vista previa"),
