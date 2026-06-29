@@ -520,6 +520,7 @@ function App(){
   var _slr=useState(false);var showLostReasons=_slr[0];var setShowLostReasons=_slr[1];
   var _scm=useState(false);var showClipMenu=_scm[0];var setShowClipMenu=_scm[1];
   var _smm=useState(false);var showMoreMenu=_smm[0];var setShowMoreMenu=_smm[1];
+  var _ctxm=useState(null);var ctxMenu=_ctxm[0];var setCtxMenu=_ctxm[1]; /* {contact, x, y} - menú contextual lista */
   var _scp=useState(false);var showContactPicker=_scp[0];var setShowContactPicker=_scp[1];
   var _srf=useState(false);var showReminderForm=_srf[0];var setShowReminderForm=_srf[1];
   var _upl=useState(false);var uploading=_upl[0];var setUploading=_upl[1];
@@ -715,13 +716,16 @@ function App(){
     }
     setSelected(c);setShowReassign(false);setShowLostReasons(false);setShowClipMenu(false);setShowContactPicker(false);setShowReminderForm(false);setTab("info");
   };
-  var handleMarkAsUnread=function(){
-    if(!selected)return;
-    setContacts(function(prev){return prev.map(function(x){return x.id===selected.id?Object.assign({},x,{is_unread:1}):x})});
-    fetch(API+"/conversations/"+selected.id+"/read-status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({isUnread:true})}).catch(function(){
-      setContacts(function(prev){return prev.map(function(x){return x.id===selected.id?Object.assign({},x,{is_unread:0}):x})});
+  /* setReadStatus: marca un chat como leído/no leído. Sirve para el botón del header y para el menú contextual. */
+  var setReadStatus=function(contact,isUnread){
+    if(!contact)return;
+    var prevVal=isUnread?0:1;var newVal=isUnread?1:0;
+    setContacts(function(prev){return prev.map(function(x){return x.id===contact.id?Object.assign({},x,{is_unread:newVal}):x})});
+    fetch(API+"/conversations/"+contact.id+"/read-status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({isUnread:isUnread})}).catch(function(){
+      setContacts(function(prev){return prev.map(function(x){return x.id===contact.id?Object.assign({},x,{is_unread:prevVal}):x})});
     });
   };
+  var handleMarkAsUnread=function(){setReadStatus(selected,true)};
   var changeStage=async function(stage,lostReason){try{var body={stage:stage};if(lostReason)body.lost_reason=lostReason;var res=await fetch(API+"/contacts/"+selected.id+"/stage",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});var updated=await res.json();setSelected(updated);loadContacts();setShowLostReasons(false)}catch(err){console.error(err)}};
   var handleFileUpload=async function(file){if(!file||!selected)return;setUploading(true);setShowClipMenu(false);try{var formData=new FormData();formData.append("file",file);formData.append("agent_name",user.name);var res=await fetch(API+"/contacts/"+selected.id+"/upload",{method:"POST",body:formData});var data=await res.json();if(res.ok){loadMessages(selected.id);var updatedC=await fetch(API+"/contacts/"+selected.id).then(function(r){return r.json()});setSelected(updatedC);loadContacts()}else{alert(data.error||"Error al subir el archivo")}}catch(e){alert("Error de conexión al subir el archivo")}setUploading(false)};
   var handleShareContact=async function(sharedId){if(!selected)return;setShowContactPicker(false);setShowClipMenu(false);try{var res=await fetch(API+"/contacts/"+selected.id+"/share-contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shared_contact_id:sharedId,agent_name:user.name})});if(res.ok){loadMessages(selected.id);loadContacts()}}catch(e){alert("Error de conexión")}};
@@ -1069,6 +1073,7 @@ function App(){
           displayContacts.map(function(c){
             var chData=CHANNELS[c.channel]||{};var isSelected=selected&&selected.id===c.id;var hasUnread=!!c.is_unread;var deptData=DEPARTMENTS[c.department]||{};
             return React.createElement("div",{key:c.id,onClick:function(){selectContact(c)},
+              onContextMenu:function(e){e.preventDefault();setCtxMenu({contact:c,x:e.clientX,y:e.clientY})},
               style:{display:"flex",gap:10,padding:"12px 12px",cursor:"pointer",alignItems:"flex-start",
                 background:isSelected?T.hover:"transparent",borderLeft:"3px solid "+(isSelected?T.accent:"transparent"),
                 borderBottom:"1px solid "+T.border+"55",transition:"background .1s"}},
@@ -1558,6 +1563,17 @@ function App(){
       )
     ),
 
+    /* ── MENÚ CONTEXTUAL LISTA (clic derecho tipo WhatsApp Web) ── */
+    ctxMenu&&React.createElement(React.Fragment,null,
+      React.createElement("div",{onClick:function(){setCtxMenu(null)},onContextMenu:function(e){e.preventDefault();setCtxMenu(null)},style:{position:"fixed",inset:0,zIndex:2000}}),
+      React.createElement("div",{style:{position:"fixed",top:Math.min(ctxMenu.y,window.innerHeight-120),left:Math.min(ctxMenu.x,window.innerWidth-220),minWidth:200,background:T.card,border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.35)",zIndex:2001,overflow:"hidden",padding:"4px 0"}},
+        React.createElement("button",{onClick:function(){var c=ctxMenu.contact;setCtxMenu(null);setReadStatus(c,!c.is_unread)},
+          style:{width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,fontWeight:500,color:T.t2,background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:10},
+          onMouseEnter:function(e){e.currentTarget.style.background=T.hover},onMouseLeave:function(e){e.currentTarget.style.background="transparent"}},
+          React.createElement(Icon,{name:"MailOpen",size:15,color:T.t3}),
+          ctxMenu.contact.is_unread?"Marcar como leído":"Marcar como no leído"))
+    ),
+
     /* ── TOAST ───────────────────────────────── */
     toastContact&&React.createElement(Toast,{contact:toastContact,onClose:function(){setToastContact(null)}}),
 
@@ -1722,6 +1738,7 @@ function App(){
 }
 
 ReactDOM.render(React.createElement(App),document.getElementById("root"));
+
 </script>
 </body>
 </html>
