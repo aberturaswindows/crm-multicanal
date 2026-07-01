@@ -239,28 +239,28 @@ async function handleAutoReply(contact, channel) {
                 );
               }
             }
-            var fichaTexto = "📋 FICHA PARA COTIZAR\n";
-            fichaTexto += "━━━━━━━━━━━━━━━━━━━━━\n";
-            fichaTexto += "👤 Nombre: " + (r.nombre || "No indicado") + "\n";
-            fichaTexto += "📞 Teléfono: " + (r.telefono || "No indicado") + "\n";
-            fichaTexto += "🔧 Instalación: " + (r.instalacion || "No indicado") + "\n";
-            fichaTexto += "📍 Dirección: " + (r.direccion || "No indicada") + "\n";
-            fichaTexto += "📐 Plano: " + (r.tiene_plano || "No indicado") + "\n";
-            fichaTexto += "🎨 Color: " + (r.color || "No indicado") + "\n";
-            fichaTexto += "🔲 Vidrio: " + (r.vidrio || "No indicado") + "\n";
+            var fichaTexto = "\u{1F4CB} FICHA PARA COTIZAR\n";
+            fichaTexto += "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n";
+            fichaTexto += "\u{1F464} Nombre: " + (r.nombre || "No indicado") + "\n";
+            fichaTexto += "\u{1F4DE} Tel\u00e9fono: " + (r.telefono || "No indicado") + "\n";
+            fichaTexto += "\u{1F527} Instalaci\u00f3n: " + (r.instalacion || "No indicado") + "\n";
+            fichaTexto += "\u{1F4CD} Direcci\u00f3n: " + (r.direccion || "No indicada") + "\n";
+            fichaTexto += "\u{1F4D0} Plano: " + (r.tiene_plano || "No indicado") + "\n";
+            fichaTexto += "\u{1F3A8} Color: " + (r.color || "No indicado") + "\n";
+            fichaTexto += "\u{1F532} Vidrio: " + (r.vidrio || "No indicado") + "\n";
             if (Array.isArray(r.aberturas) && r.aberturas.length > 0) {
-              fichaTexto += "🪟 Aberturas:\n";
+              fichaTexto += "\u{1FA9F} Aberturas:\n";
               for (var fi = 0; fi < r.aberturas.length; fi++) {
                 var fab = r.aberturas[fi];
-                fichaTexto += "   • " + (fab.tipo || "Abertura") + ": " + (fab.ancho_cm || "?") + " x " + (fab.alto_cm || "?") + " cm";
+                fichaTexto += "   \u2022 " + (fab.tipo || "Abertura") + ": " + (fab.ancho_cm || "?") + " x " + (fab.alto_cm || "?") + " cm";
                 if (fab.cantidad > 1) fichaTexto += " (x" + fab.cantidad + ")";
                 fichaTexto += "\n";
               }
             } else {
-              fichaTexto += "🪟 Aberturas: No indicadas\n";
+              fichaTexto += "\u{1FA9F} Aberturas: No indicadas\n";
             }
-            if (r.notas) fichaTexto += "📝 Notas: " + r.notas + "\n";
-            fichaTexto += "━━━━━━━━━━━━━━━━━━━━━";
+            if (r.notas) fichaTexto += "\u{1F4DD} Notas: " + r.notas + "\n";
+            fichaTexto += "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501";
             db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, fichaTexto, channel);
             console.log("[FICHA] Guardada para " + contact.name + " (cotizacion #" + cotizId + ", " + (Array.isArray(r.aberturas) ? r.aberturas.length : 0) + " aberturas)");
           } catch (fichaErr) {
@@ -331,7 +331,11 @@ async function handleIncomingMessage(normalized) {
       contentToSave = normalized.text;
     }
 
-    var insertedMsg = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?)").run(contact.id, contentToSave, normalized.channel, normalized.messageId, normalized.mediaType || null, normalized.mediaUrl || null, normalized.storyUrl || null);
+    // reply_to_message_id: WhatsApp/IG/FB envian el wamid del mensaje citado en context.
+    // Lo guardamos tal cual (es el mismo formato que channel_message_id), para que el
+    // self-JOIN de /contacts/:id/messages pueda resolver la cita.
+    var replyToWamid = normalized.replyToMessageId || null;
+    var insertedMsg = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url, reply_to_message_id) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?, ?)").run(contact.id, contentToSave, normalized.channel, normalized.messageId, normalized.mediaType || null, normalized.mediaUrl || null, normalized.storyUrl || null, replyToWamid);
     if (normalized.originalFilename) {
       try { db.prepare("UPDATE messages SET original_filename = ? WHERE id = ?").run(normalized.originalFilename, insertedMsg.lastInsertRowid); } catch(e) {}
     }
@@ -449,4 +453,3 @@ router.post("/phone", async function(req, res) {
 });
 
 module.exports = router;
-
