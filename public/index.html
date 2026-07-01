@@ -629,7 +629,7 @@ function App(){
   var _smsd=useState(false);var supSending=_smsd[0];var setSupSending=_smsd[1];
   var _smwd=useState(null);var supWindow=_smwd[0];var setSupWindow=_smwd[1]; /* {open, lastIncomingAt, hoursSince} */
   var supFileInputRef=useRef(null);
-  var SUP_TEMPLATE="pedido_cotizacion"; /* plantilla sin header, {{1}}=nombre proveedor */
+  var SUP_TEMPLATE="solicitud_cotizacion"; /* plantilla sin header, {{1}}=nombre proveedor (aprobada en Meta) */
 
   var loggedIn=!!user;
 
