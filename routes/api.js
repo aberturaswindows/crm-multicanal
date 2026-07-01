@@ -47,6 +47,20 @@ function pauseAiForContact(db, contactId, agentName) {
   }
 }
 
+// Helper: dado el id INTERNO de un mensaje del CRM, devuelve el wamid (channel_message_id)
+// que WhatsApp necesita para citar. El frontend nos manda el id interno del mensaje a
+// responder; Meta necesita el wamid. Si el mensaje no tiene wamid (ej: aun 'pending' o
+// mensaje de un canal sin id de Meta), devuelve null y el mensaje se envia sin cita.
+function resolveReplyWamid(db, internalMsgId) {
+  if (!internalMsgId) return null;
+  try {
+    var row = db.prepare("SELECT channel_message_id FROM messages WHERE id = ?").get(internalMsgId);
+    return row && row.channel_message_id ? row.channel_message_id : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Helper: después de enviar un outgoing a un canal, actualizar su status en DB.
 // sendResult viene de whatsapp.sendMessage / sendMedia / sendTemplate / etc.
 // Si simulated=true (canal no configurado), se marca como 'sent' sin channel_message_id
@@ -174,7 +188,13 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
   if (mediaType === "file" && originalFilename && !caption) contentLabel = "[Archivo: " + originalFilename + "]";
   var msgContent = caption ? caption : contentLabel;
 
-  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, status) VALUES (?, 'outgoing', ?, ?, ?, ?, ?, 'pending')").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl);
+  // Cita (reply): el frontend manda el id INTERNO del mensaje citado. Lo guardamos como
+  // wamid (channel_message_id) para que se muestre la cita en el CRM y, si aplica, se
+  // envie por Meta con context.
+  var replyToInternalId = req.body.reply_to_message_id || null;
+  var replyToWamid = resolveReplyWamid(db, replyToInternalId);
+
+  var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, status, reply_to_message_id) VALUES (?, 'outgoing', ?, ?, ?, ?, ?, 'pending', ?)").run(contact.id, msgContent, contact.channel, agentName, mediaType, mediaUrl, replyToWamid);
   // Guardar nombre original en columna separada (migración idempotente en setup.js garantiza que existe)
   try { db.prepare("UPDATE messages SET original_filename = ? WHERE id = ?").run(originalFilename, result.lastInsertRowid); } catch(e) {}
 
@@ -208,7 +228,7 @@ router.post("/contacts/:id/upload", upload.single("file"), async function(req, r
       }
       console.log("[UPLOAD] Instagram attachment to " + contact.name + ": " + (originalFilename || req.file.filename));
     } else if (contact.channel === "whatsapp" && process.env.WHATSAPP_TOKEN) {
-      var waResult = await whatsapp.sendMedia(contact.channel_id, mediaType, publicUrl, caption, contact.phone_line || 1, originalFilename);
+      var waResult = await whatsapp.sendMedia(contact.channel_id, mediaType, publicUrl, caption, contact.phone_line || 1, originalFilename, replyToWamid);
       sendResult = waResult;
       if (!waResult.success) {
         updateMessageStatus(db, result.lastInsertRowid, waResult);
@@ -514,18 +534,18 @@ router.post("/contacts/:id/regenerate-ficha", async function(req, res) {
       return res.status(500).json({ error: "No se pudo generar la ficha" });
     }
 
-    var fichaTexto = "📋 FICHA PARA COTIZAR\n";
-    fichaTexto += "━━━━━━━━━━━━━━━━━━━━━\n";
-    fichaTexto += "👤 Nombre: " + (resumen.nombre || "No indicado") + "\n";
-    fichaTexto += "📞 Teléfono: " + (resumen.telefono || "No indicado") + "\n";
-    fichaTexto += "📍 Dirección: " + (resumen.direccion || "No indicada") + "\n";
-    fichaTexto += "🪟 Producto: " + (resumen.producto || "No indicado") + "\n";
-    fichaTexto += "📐 Plano: " + (resumen.plano || "No indicado") + "\n";
-    fichaTexto += "🎨 Color: " + (resumen.color || "No indicado") + "\n";
-    fichaTexto += "🔲 Vidrio: " + (resumen.vidrio || "No indicado") + "\n";
-    fichaTexto += "📏 Medidas: " + (resumen.medidas || "No indicadas") + "\n";
-    fichaTexto += "🔧 Instalación: " + (resumen.instalacion || "No indicado") + "\n";
-    fichaTexto += "━━━━━━━━━━━━━━━━━━━━━";
+    var fichaTexto = "\u{1F4CB} FICHA PARA COTIZAR\n";
+    fichaTexto += "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n";
+    fichaTexto += "\u{1F464} Nombre: " + (resumen.nombre || "No indicado") + "\n";
+    fichaTexto += "\u{1F4DE} Tel\u00e9fono: " + (resumen.telefono || "No indicado") + "\n";
+    fichaTexto += "\u{1F4CD} Direcci\u00f3n: " + (resumen.direccion || "No indicada") + "\n";
+    fichaTexto += "\u{1FA9F} Producto: " + (resumen.producto || "No indicado") + "\n";
+    fichaTexto += "\u{1F4D0} Plano: " + (resumen.plano || "No indicado") + "\n";
+    fichaTexto += "\u{1F3A8} Color: " + (resumen.color || "No indicado") + "\n";
+    fichaTexto += "\u{1F532} Vidrio: " + (resumen.vidrio || "No indicado") + "\n";
+    fichaTexto += "\u{1F4CF} Medidas: " + (resumen.medidas || "No indicadas") + "\n";
+    fichaTexto += "\u{1F527} Instalaci\u00f3n: " + (resumen.instalacion || "No indicado") + "\n";
+    fichaTexto += "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501";
 
     var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, fichaTexto, contact.channel);
     var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
@@ -816,7 +836,20 @@ router.get("/conversations/:id/attachments", function(req, res) {
 
 router.get("/contacts/:id/messages", function(req, res) {
   var db = getDb();
-  var messages = db.prepare("SELECT * FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(req.params.id);
+  // Self-JOIN para resolver la cita (reply): messages.reply_to_message_id guarda el wamid
+  // (channel_message_id) del mensaje citado. Traemos un preview de ese mensaje para pintarlo
+  // en el CRM sin que el frontend tenga que buscarlo aparte.
+  var messages = db.prepare(
+    "SELECT m.*, " +
+    "  q.content AS reply_content, " +
+    "  q.direction AS reply_direction, " +
+    "  q.agent_name AS reply_agent_name, " +
+    "  q.media_type AS reply_media_type, " +
+    "  q.original_filename AS reply_original_filename " +
+    "FROM messages m " +
+    "LEFT JOIN messages q ON q.channel_message_id = m.reply_to_message_id AND q.contact_id = m.contact_id " +
+    "WHERE m.contact_id = ? ORDER BY m.created_at ASC"
+  ).all(req.params.id);
   res.json(messages);
 });
 
@@ -828,7 +861,13 @@ router.post("/contacts/:id/messages", async function(req, res) {
     var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
     if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
     if (!content || !content.trim()) return res.status(400).json({ error: "Mensaje vacio" });
-    var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, ?, 'pending')").run(contact.id, content.trim(), contact.channel, agent_name || "Agente");
+
+    // Cita (reply): el frontend manda el id INTERNO del mensaje citado. Resolvemos su wamid
+    // para guardarlo y (en WhatsApp) enviarlo por Meta con context.
+    var replyToInternalId = req.body.reply_to_message_id || null;
+    var replyToWamid = resolveReplyWamid(db, replyToInternalId);
+
+    var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status, reply_to_message_id) VALUES (?, 'outgoing', ?, ?, ?, 'pending', ?)").run(contact.id, content.trim(), contact.channel, agent_name || "Agente", replyToWamid);
     db.prepare("UPDATE contacts SET is_unread = 0 WHERE id = ?").run(contact.id);
 
     // Pausar Claudia: un agente humano tomo el control de la conversacion
@@ -836,7 +875,7 @@ router.post("/contacts/:id/messages", async function(req, res) {
 
     var sendResult = { success: true, simulated: true };
     if (contact.channel === "whatsapp") {
-      sendResult = await whatsapp.sendMessage(contact.channel_id, content.trim(), contact.phone_line || 1);
+      sendResult = await whatsapp.sendMessage(contact.channel_id, content.trim(), contact.phone_line || 1, replyToWamid);
     } else if (contact.channel === "instagram") {
       sendResult = await instagram.sendMessage(contact.channel_id, content.trim());
     } else if (contact.channel === "facebook") {
@@ -1237,4 +1276,3 @@ router.delete("/quotes/:id", function(req, res) {
 });
 
 module.exports = router;
-
