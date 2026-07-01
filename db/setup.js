@@ -32,7 +32,8 @@ function setup() {
     ["messages", "read_at", "TIMESTAMP"],
     ["messages", "failed_reason", "TEXT"],
     ["contacts", "profile_picture_url", "TEXT"],
-    ["contacts", "profile_picture_updated_at", "TIMESTAMP"]
+    ["contacts", "profile_picture_updated_at", "TIMESTAMP"],
+    ["messages", "reply_to_message_id", "TEXT"]
   ];
   for (var i = 0; i < newColumns.length; i++) {
     try {
@@ -47,6 +48,7 @@ function setup() {
     db.exec("UPDATE messages SET status='read' WHERE direction='system' AND status IS NULL");
     db.exec("UPDATE messages SET status='sent' WHERE status IS NULL");
     db.exec("CREATE INDEX IF NOT EXISTS idx_messages_channel_msg_id ON messages(channel_message_id)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_messages_reply_to ON messages(reply_to_message_id)");
   } catch (e) {}
 
   // Migracion: permitir direction='system' en la tabla messages
@@ -193,4 +195,3 @@ if (require.main === module) {
   setup();
 }
 module.exports = { getDb: getDb, setup: setup };
-
