@@ -35,6 +35,9 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:#1C1917;color:#D6D3D1
 .switch input:checked+.slider{background:#065F46}
 .switch input:checked+.slider:before{transform:translateX(20px);background:#10B981}
 input,textarea,select{font-family:inherit}
+.msg-hover-wrap{position:relative}
+.msg-hover-wrap .reply-btn{opacity:0;transition:opacity .15s}
+.msg-hover-wrap:hover .reply-btn{opacity:1}
 </style>
 </head>
 <body>
@@ -134,6 +137,7 @@ var ICONS={
   FolderOpen:"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
   ChevronLeft:"M15 18l-6-6 6-6",
   ChevronRight:"M9 18l6-6-6-6",
+  CornerUpLeft:"M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11",
 };
 function Icon(props){
   var name=props.name,size=props.size||16,color=props.color||T.t3,style=props.style||{};
@@ -412,6 +416,35 @@ function renderSystemMessage(m,i){
   );
 }
 
+/* ── REPLY QUOTE (cita de mensaje, tipo WhatsApp) ── */
+/* Muestra una vista previa compacta del mensaje citado. Se usa tanto arriba
+   del input (mientras se está armando la respuesta) como incrustada dentro
+   de una burbuja (cuando ese mensaje ya fue enviado citando a otro). */
+function ReplyQuote(props){
+  var content=props.content||"";
+  var direction=props.direction; /* "incoming" | "outgoing" */
+  var agentName=props.agentName;
+  var mediaType=props.mediaType;
+  var originalFilename=props.originalFilename;
+  var onClose=props.onClose; /* si viene, muestra la X (modo "componiendo") */
+  var onClick=props.onClick;
+  var who = direction==="outgoing" ? (agentName||"Vos") : (props.contactName||"Cliente");
+  var preview=content;
+  if(!preview||/^\[(Imagen|Video|Audio|Archivo)/.test(preview||"")){
+    if(mediaType==="image")preview="📷 Imagen";
+    else if(mediaType==="video")preview="🎥 Video";
+    else if(mediaType==="audio")preview="🎤 Audio";
+    else if(mediaType==="file")preview="📎 "+(originalFilename||"Archivo");
+    else preview=preview||"Mensaje";
+  }
+  return React.createElement("div",{onClick:onClick,style:{display:"flex",alignItems:"flex-start",gap:8,padding:"6px 10px",borderLeft:"3px solid "+T.accent,background:T.hover,borderRadius:6,marginBottom:onClose?0:6,cursor:onClick?"pointer":"default",maxWidth:"100%"}},
+    React.createElement("div",{style:{flex:1,minWidth:0}},
+      React.createElement("div",{style:{fontSize:11,fontWeight:700,color:T.accent,marginBottom:2}},who),
+      React.createElement("div",{style:{fontSize:12,color:T.t3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},preview)),
+    onClose&&React.createElement("button",{onClick:function(e){e.stopPropagation();onClose()},style:{border:"none",background:"none",cursor:"pointer",color:T.t4,display:"flex",flexShrink:0,padding:2}},React.createElement(Icon,{name:"X",size:14}))
+  );
+}
+
 /* ── TOAST ───────────────────────────────────────── */
 function Toast(props){
   if(!props.contact)return null;
@@ -537,6 +570,7 @@ function App(){
   var _snd=useState(true);var soundOn=_snd[0];var setSoundOn=_snd[1];
   var _tst=useState(null);var toastContact=_tst[0];var setToastContact=_tst[1];
   var _lb=useState(null);var lightbox=_lb[0];var setLightbox=_lb[1];
+  var _rpt=useState(null);var replyingTo=_rpt[0];var setReplyingTo=_rpt[1]; /* mensaje que se está citando en la respuesta */
   var prevContactCount=useRef(0);
   var prevContactsRef=useRef([]);
   var selectedRef=useRef(null);
@@ -685,8 +719,10 @@ function App(){
   var sendMsg=async function(){
     if(!msgText.trim()||!selected)return;
     try{
-      var sendRes=await fetch(API+"/contacts/"+selected.id+"/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:msgText.trim(),agent_name:user.name})});
-      var sendData=await sendRes.json();setMsgText("");
+      var body={content:msgText.trim(),agent_name:user.name};
+      if(replyingTo)body.reply_to_message_id=replyingTo.id;
+      var sendRes=await fetch(API+"/contacts/"+selected.id+"/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      var sendData=await sendRes.json();setMsgText("");setReplyingTo(null);
       var msgs=await fetch(API+"/contacts/"+selected.id+"/messages").then(function(r){return r.json()});
       setMessages(Array.isArray(msgs)?msgs:[]);
       if(sendData&&sendData.contact){setSelected(sendData.contact)}else{var updatedC=await fetch(API+"/contacts/"+selected.id).then(function(r){return r.json()});setSelected(updatedC)}
@@ -707,7 +743,7 @@ function App(){
   };
   var selectContact=function(c){
     selectedRef.current=c;
-    setShowFilesPanel(false);setFilesData([]);
+    setShowFilesPanel(false);setFilesData([]);setReplyingTo(null);
     if(c.is_unread){
       setContacts(function(prev){return prev.map(function(x){return x.id===c.id?Object.assign({},x,{is_unread:0}):x})});
       fetch(API+"/conversations/"+c.id+"/read-status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({isUnread:false})}).catch(function(){
@@ -727,7 +763,7 @@ function App(){
   };
   var handleMarkAsUnread=function(){setReadStatus(selected,true)};
   var changeStage=async function(stage,lostReason){try{var body={stage:stage};if(lostReason)body.lost_reason=lostReason;var res=await fetch(API+"/contacts/"+selected.id+"/stage",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});var updated=await res.json();setSelected(updated);loadContacts();setShowLostReasons(false)}catch(err){console.error(err)}};
-  var handleFileUpload=async function(file){if(!file||!selected)return;setUploading(true);setShowClipMenu(false);try{var formData=new FormData();formData.append("file",file);formData.append("agent_name",user.name);var res=await fetch(API+"/contacts/"+selected.id+"/upload",{method:"POST",body:formData});var data=await res.json();if(res.ok){loadMessages(selected.id);var updatedC=await fetch(API+"/contacts/"+selected.id).then(function(r){return r.json()});setSelected(updatedC);loadContacts()}else{alert(data.error||"Error al subir el archivo")}}catch(e){alert("Error de conexión al subir el archivo")}setUploading(false)};
+  var handleFileUpload=async function(file){if(!file||!selected)return;setUploading(true);setShowClipMenu(false);try{var formData=new FormData();formData.append("file",file);formData.append("agent_name",user.name);if(replyingTo)formData.append("reply_to_message_id",replyingTo.id);var res=await fetch(API+"/contacts/"+selected.id+"/upload",{method:"POST",body:formData});var data=await res.json();if(res.ok){setReplyingTo(null);loadMessages(selected.id);var updatedC=await fetch(API+"/contacts/"+selected.id).then(function(r){return r.json()});setSelected(updatedC);loadContacts()}else{alert(data.error||"Error al subir el archivo")}}catch(e){alert("Error de conexión al subir el archivo")}setUploading(false)};
   var handleShareContact=async function(sharedId){if(!selected)return;setShowContactPicker(false);setShowClipMenu(false);try{var res=await fetch(API+"/contacts/"+selected.id+"/share-contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shared_contact_id:sharedId,agent_name:user.name})});if(res.ok){loadMessages(selected.id);loadContacts()}}catch(e){alert("Error de conexión")}};
   var handleCreateReminder=async function(){if(!selected||!reminderDate)return;var reminderAt=reminderDate+(reminderTime?"T"+reminderTime:"T09:00");try{var res=await fetch(API+"/reminders",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contact_id:selected.id,reminder_at:reminderAt,note:reminderNote,created_by:user.name})});if(res.ok){alert("Recordatorio creado");setShowReminderForm(false);setShowClipMenu(false);setReminderDate("");setReminderTime("");setReminderNote("")}else{var err=await res.json();alert(err.error||"Error")}}catch(e){alert("Error de conexión")}};
   var createUser=async function(){if(!nfUsername||!nfPassword||!nfName){alert("Completá todos los campos");return}try{var res=await fetch(API+"/users",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:nfUsername,password:nfPassword,name:nfName,role:nfRole,department:nfRole==="admin"?null:nfDept})});var data=await res.json();if(res.ok){alert("Usuario "+data.name+" creado");setShowNewForm(false);setNfUsername("");setNfPassword("");setNfName("");loadUsers()}else{alert(data.error||"Error")}}catch(e){alert("Error de conexión")}};
@@ -1184,20 +1220,26 @@ function App(){
               }
               if(m.direction==="system"){var sm=renderSystemMessage(m,i);return sep?[sep,sm]:sm}
               var isAi=m.agent_name==="Claudia"||m.agent_name==="IA NexoCRM";var isOut=m.direction==="outgoing";
-              var bubble=React.createElement("div",{key:m.id||i,style:{alignSelf:isOut?"flex-end":"flex-start",maxWidth:"72%",animation:"slideIn .2s ease"}},
+              var canReply=selected.channel==="whatsapp";
+              var bubbleInner=React.createElement("div",{key:m.id||i,style:{alignSelf:isOut?"flex-end":"flex-start",maxWidth:"72%",animation:"slideIn .2s ease"}},
                 isOut&&isAi&&React.createElement("div",{style:{fontSize:11,color:T.neutral,fontWeight:700,textAlign:"right",marginBottom:4}},
                   "✦ Claudia"),
-                React.createElement("div",{style:{padding:"8px 12px",borderRadius:isOut?"14px 4px 14px 14px":"4px 14px 14px 14px",
-                  background:isOut?(isAi?T.neutralBg:T.accentBg):T.card,
-                  color:T.t2,fontSize:13.5,lineHeight:1.55,
-                  border:"1px solid "+(isOut?(isAi?T.neutralBd:T.accentBd):T.border)}},
-                  renderMedia(m,function(text){setMsgText(text)})),
+                React.createElement("div",{className:"msg-hover-wrap",style:{position:"relative"}},
+                  canReply&&React.createElement("button",{className:"reply-btn",onClick:function(){setReplyingTo(m)},title:"Responder",
+                    style:{position:"absolute",top:2,[isOut?"left":"right"]:-30,width:26,height:26,borderRadius:"50%",border:"1px solid "+T.border,background:T.card,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1}},
+                    React.createElement(Icon,{name:"CornerUpLeft",size:13,color:T.t3})),
+                  React.createElement("div",{style:{padding:"8px 12px",borderRadius:isOut?"14px 4px 14px 14px":"4px 14px 14px 14px",
+                    background:isOut?(isAi?T.neutralBg:T.accentBg):T.card,
+                    color:T.t2,fontSize:13.5,lineHeight:1.55,
+                    border:"1px solid "+(isOut?(isAi?T.neutralBd:T.accentBd):T.border)}},
+                    m.reply_content!=null&&React.createElement(ReplyQuote,{content:m.reply_content,direction:m.reply_direction,agentName:m.reply_agent_name,mediaType:m.reply_media_type,originalFilename:m.reply_original_filename,contactName:selected.name}),
+                    renderMedia(m,function(text){setMsgText(text)}))),
                 React.createElement("div",{style:{display:"flex",justifyContent:isOut?"flex-end":"flex-start",gap:4,padding:"2px 4px",alignItems:"center"}},
                   React.createElement("span",{style:{fontSize:11,color:T.t4}},formatTime(m.created_at)),
                   isOut&&m.agent_name&&!isAi&&React.createElement("span",{style:{fontSize:11,color:T.t3}},"· "+m.agent_name),
                   isOut&&m.channel!=="email"&&m.channel!=="telefono"&&React.createElement(MessageStatus,{m:m}))
               );
-              return sep?[sep,bubble]:bubble;
+              return sep?[sep,bubbleInner]:bubbleInner;
             })})(),
             aiLoading&&!selected.ai_paused&&React.createElement("div",{style:{alignSelf:"flex-start",marginLeft:8}},
               React.createElement("div",{style:{fontSize:11,color:T.neutral,fontWeight:700,marginBottom:4}},"✦ Claudia escribe…"),
@@ -1219,6 +1261,9 @@ function App(){
           React.createElement("div",{style:{padding:"10px 14px 12px",background:T.card,borderTop:"1px solid "+T.border,flexShrink:0}},
             React.createElement("input",{ref:fileInputRef,type:"file",accept:".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.dwg,.dxf,.skp,.rvt,.3ds,.ifc,.heic",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleFileUpload(e.target.files[0]);e.target.value=""}}),
             React.createElement("input",{ref:mediaInputRef,type:"file",accept:"image/*,video/*,.heic",style:{display:"none"},onChange:function(e){if(e.target.files[0])handleFileUpload(e.target.files[0]);e.target.value=""}}),
+            /* Reply bar (respondiendo a...) */
+            replyingTo&&React.createElement("div",{style:{marginBottom:8,animation:"slideIn .15s ease"}},
+              React.createElement(ReplyQuote,{content:replyingTo.content,direction:replyingTo.direction,agentName:replyingTo.agent_name,mediaType:replyingTo.media_type,originalFilename:replyingTo.original_filename,contactName:selected.name,onClose:function(){setReplyingTo(null)}})),
             /* Clip menu */
             showClipMenu&&React.createElement("div",{style:{marginBottom:8,padding:8,background:T.card,border:"1px solid "+T.border,borderRadius:10,display:"flex",gap:8,flexWrap:"wrap",animation:"slideIn .2s ease"}},
               [["Paperclip","Documento",function(){setShowClipMenu(false);fileInputRef.current&&fileInputRef.current.click()}],
@@ -1255,7 +1300,7 @@ function App(){
             React.createElement("div",{style:{display:"flex",gap:8,alignItems:"flex-end"}},
               React.createElement("button",{onClick:function(){setShowClipMenu(!showClipMenu);setShowContactPicker(false);setShowReminderForm(false)},
                 style:{width:36,height:36,borderRadius:"50%",border:"none",background:showClipMenu?T.accent:T.hover,color:showClipMenu?"#fff":T.t4,fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s",transform:showClipMenu?"rotate(45deg)":"none",fontWeight:400,lineHeight:1}},"+"),
-              React.createElement("textarea",{value:msgText,onChange:function(e){setMsgText(e.target.value)},onKeyDown:function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg()}},placeholder:"Escribir mensaje… (Enter para enviar)",rows:1,
+              React.createElement("textarea",{value:msgText,onChange:function(e){setMsgText(e.target.value)},onKeyDown:function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg()}},placeholder:replyingTo?"Responder…":"Escribir mensaje… (Enter para enviar)",rows:1,
                 style:{flex:1,resize:"none",border:"1px solid "+T.border,borderRadius:10,padding:"8px 16px",fontSize:13.5,fontFamily:"inherit",color:T.t1,outline:"none",minHeight:40,maxHeight:100,background:T.bg,lineHeight:1.5}}),
               React.createElement("button",{onClick:sendMsg,
                 style:{width:38,height:38,borderRadius:10,border:"none",background:T.accent,color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
