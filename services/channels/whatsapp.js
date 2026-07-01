@@ -19,8 +19,9 @@ function getPhoneId(line) {
 
 /**
  * Enviar mensaje de texto por WhatsApp
+ * replyToWamid (opcional): wamid del mensaje a citar (context.message_id)
  */
-async function sendMessage(to, text, phoneLine) {
+async function sendMessage(to, text, phoneLine, replyToWamid) {
   var phoneId = getPhoneId(phoneLine || 1);
   var token = process.env.WHATSAPP_TOKEN;
 
@@ -30,12 +31,15 @@ async function sendMessage(to, text, phoneLine) {
   }
 
   try {
-    var res = await axios.post(GRAPH_API + "/" + phoneId + "/messages", {
+    var payload = {
       messaging_product: "whatsapp",
       to: to,
       type: "text",
       text: { body: text }
-    }, {
+    };
+    if (replyToWamid) { payload.context = { message_id: replyToWamid }; }
+
+    var res = await axios.post(GRAPH_API + "/" + phoneId + "/messages", payload, {
       headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" }
     });
 
@@ -68,8 +72,9 @@ async function sendMessage(to, text, phoneLine) {
  * Enviar archivo multimedia por WhatsApp
  * mediaType: "image" | "video" | "audio" | "document"
  * url: URL publica del archivo
+ * replyToWamid (opcional): wamid del mensaje a citar (context.message_id)
  */
-async function sendMedia(to, mediaType, url, caption, phoneLine, filename) {
+async function sendMedia(to, mediaType, url, caption, phoneLine, filename, replyToWamid) {
   var phoneId = getPhoneId(phoneLine || 1);
   var token = process.env.WHATSAPP_TOKEN;
 
@@ -86,6 +91,7 @@ async function sendMedia(to, mediaType, url, caption, phoneLine, filename) {
     to: to,
     type: waType
   };
+  if (replyToWamid) { body.context = { message_id: replyToWamid }; }
 
   var mediaObj = { link: url };
   if (waType === "document" && filename) {
@@ -385,6 +391,10 @@ function processWebhook(body) {
     if (phoneNumberId === process.env.WHATSAPP_PHONE_ID_2) phoneLine = 2;
     if (phoneNumberId === process.env.WHATSAPP_PHONE_ID_3) phoneLine = 3;
 
+    // Cita (reply): si el cliente respondio citando un mensaje, WhatsApp incluye
+    // msg.context.id con el wamid del mensaje citado. Lo capturamos para guardarlo.
+    var replyToMessageId = (msg.context && msg.context.id) ? msg.context.id : null;
+
     var text = "";
     var mediaType = null;
     var mediaUrl = null; // Para WA Cloud API, esto es el media ID que luego se descarga
@@ -459,6 +469,7 @@ function processWebhook(body) {
       mediaUrl: mediaUrl,
       storyUrl: null,
       originalFilename: docFilename,
+      replyToMessageId: replyToMessageId,
       _needsDownload: needsDownload,
       _waMediaId: needsDownload ? mediaUrl : null // Guardamos el media ID original
     };
