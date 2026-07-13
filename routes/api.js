@@ -1116,7 +1116,12 @@ router.post("/contacts/:id/send-supplier-request", async function(req, res) {
 
   pauseAiForContact(db, contact.id, agentName);
 
-  // 1) Si la ventana esta cerrada, primero la plantilla
+  // 1) Si la ventana esta cerrada, mandamos SOLO la plantilla (ya lleva la
+  // descripcion del pedido en {{2}}) y cortamos aca. Los adjuntos no se pueden
+  // mandar todavia: Meta rechaza mensajes libres fuera de la ventana de 24hs
+  // con error "Re-engagement message", aunque se haya mandado una plantilla
+  // recien. Hay que esperar a que el proveedor responda para que la ventana
+  // se abra de verdad; ahi el vendedor manda el PDF/fotos por el chat normal.
   if (!windowStatus.open) {
     var nombreProveedor = (contact.name || "").trim() || "Proveedor";
     templateResult = await whatsapp.sendTemplate(
@@ -1133,10 +1138,23 @@ router.post("/contacts/:id/send-supplier-request", async function(req, res) {
     ).run(contact.id, tplContent, contact.channel, agentName);
     updateMessageStatus(db, tplIns.lastInsertRowid, templateResult);
     steps.push({ type: "template", result: templateResult });
-    if (!templateResult.success) allOk = false;
+
+    console.log("[COTIZACION-PROV] " + agentName + " -> " + contact.name + " | ventana: cerrada | solo plantilla | exito: " + templateResult.success);
+
+    return res.json({
+      success: templateResult.success,
+      windowWasOpen: false,
+      hoursSinceLastIncoming: windowStatus.hoursSince,
+      templateResult: templateResult,
+      pendingAttachments: attachments.length > 0,
+      message_to_agent: templateResult.success
+        ? "Se envio la plantilla. El texto y los adjuntos quedan pendientes: se podran mandar por el chat normal en cuanto " + nombreProveedor + " responda."
+        : "Fallo el envio de la plantilla.",
+      steps: steps
+    });
   }
 
-  // 2) Texto descriptivo via API normal
+  // 2) Ventana abierta: mandamos todo junto (texto libre + adjuntos), sin plantilla
   var textResult = await whatsapp.sendMessage(contact.channel_id, text, phoneLine);
   var textIns = db.prepare(
     "INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, ?, 'pending')"
