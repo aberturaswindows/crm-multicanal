@@ -175,7 +175,7 @@ function handleStatusUpdate(statusEvent) {
     } else if (statusEvent.status === "failed") {
       db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(statusEvent.error || 'Unknown error', msg.id);
     }
-    console.log("[STATUS] " + statusEvent.channelMessageId + " -> " + statusEvent.status + " (msg.id=" + msg.id + ")");
+    console.log("[STATUS] " + statusEvent.channelMessageId + " -> " + statusEvent.status + " (msg.id=" + msg.id + ")" + (statusEvent.status === "failed" ? " | motivo: " + (statusEvent.error || "desconocido") : ""));
   } catch (err) {
     console.error("[STATUS] Error:", err.message);
   }
