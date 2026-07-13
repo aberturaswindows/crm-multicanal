@@ -813,11 +813,12 @@ function App(){
     setShowPresupModal(true);
   };
   var closePresupModal=function(){if(presupSending)return;setShowPresupModal(false);setPresupFiles([]);setPresupProgress({sent:0,total:0})};
-  var addPresupFiles=async function(fileList){
-    if(!fileList||fileList.length===0)return;
+  var addPresupFiles=function(fileList){
+    var arr=Array.prototype.slice.call(fileList||[]);
+    if(arr.length===0)return;
     var newOnes=[];
-    for(var i=0;i<fileList.length;i++){
-      var f=fileList[i];
+    for(var i=0;i<arr.length;i++){
+      var f=arr[i];
       if(f.type!=="application/pdf"&&(f.name||"").toLowerCase().indexOf(".pdf")===-1){alert("Solo PDF: \""+f.name+"\"");continue}
       newOnes.push({id:nextLocalId(),file:f,url:null,uploading:true,error:null});
     }
@@ -879,11 +880,12 @@ function App(){
     setDocFiles([]);setDocSending(false);setShowDocModal(true);
   };
   var closeDocModal=function(){if(docSending)return;setShowDocModal(false);setDocFiles([])};
-  var addDocFiles=async function(fileList){
-    if(!fileList||fileList.length===0)return;
+  var addDocFiles=function(fileList){
+    var arr=Array.prototype.slice.call(fileList||[]);
+    if(arr.length===0)return;
     var newOnes=[];
-    for(var i=0;i<fileList.length;i++){
-      var f=fileList[i];
+    for(var i=0;i<arr.length;i++){
+      var f=arr[i];
       if(f.type!=="application/pdf"&&(f.name||"").toLowerCase().indexOf(".pdf")===-1){alert("Solo PDF: \""+f.name+"\"");continue}
       newOnes.push({id:nextLocalId(),file:f,url:null,uploading:true,error:null});
     }
@@ -940,12 +942,13 @@ function App(){
     }catch(e){setSupWindow({open:false,lastIncomingAt:null,hoursSince:null})}
   };
   var closeSupModal=function(){if(supSending)return;setShowSupModal(false);setSupText("");setSupFiles([])};
-  var addSupFiles=async function(fileList){
-    if(!fileList||fileList.length===0)return;
+  var addSupFiles=function(fileList){
+    var arr=Array.prototype.slice.call(fileList||[]);
+    if(arr.length===0)return;
     var newOnes=[];
     var allowedExts=[".pdf",".jpg",".jpeg",".png",".webp",".gif",".heic"];
-    for(var i=0;i<fileList.length;i++){
-      var f=fileList[i];var nm=(f.name||"").toLowerCase();var ext="";
+    for(var i=0;i<arr.length;i++){
+      var f=arr[i];var nm=(f.name||"").toLowerCase();var ext="";
       for(var e=0;e<allowedExts.length;e++)if(nm.indexOf(allowedExts[e])===nm.length-allowedExts[e].length){ext=allowedExts[e];break}
       if(!ext){alert("Solo PDF o imágenes: \""+f.name+"\"");continue}
       var mediaType=ext===".pdf"?"file":"image";
@@ -1642,12 +1645,12 @@ function App(){
         React.createElement("div",{
             onClick:function(){if(!presupSending&&presupFileInputRef.current)presupFileInputRef.current.click()},
             onDragOver:function(e){e.preventDefault()},
-            onDrop:function(e){e.preventDefault();if(!presupSending)addPresupFiles(e.dataTransfer.files)},
+            onDrop:function(e){e.preventDefault();if(!presupSending){var files=Array.prototype.slice.call(e.dataTransfer.files||[]);addPresupFiles(files)}},
             style:{border:"2px dashed "+T.border,borderRadius:12,padding:"22px 16px",textAlign:"center",cursor:presupSending?"default":"pointer",background:T.bg2,marginBottom:12,opacity:presupSending?0.5:1}},
             React.createElement(Icon,{name:"FileText",size:28,color:T.t4}),
             React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t2,marginTop:8}},"Arrastrá uno o varios PDF acá"),
             React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},"o hacé clic para elegirlos · solo PDF · cada PDF se envía como un mensaje aparte")),
-        React.createElement("input",{ref:presupFileInputRef,type:"file",accept:"application/pdf,.pdf",multiple:true,style:{display:"none"},onChange:function(e){addPresupFiles(e.target.files);e.target.value=""}}),
+        React.createElement("input",{ref:presupFileInputRef,type:"file",accept:"application/pdf,.pdf",multiple:true,style:{display:"none"},onChange:function(e){var files=Array.prototype.slice.call(e.target.files||[]);e.target.value="";addPresupFiles(files)}}),
         /* Lista de archivos cargados */
         presupFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:240,overflowY:"auto"}},
           presupFiles.map(function(p,idx){
@@ -1677,12 +1680,12 @@ function App(){
         React.createElement("div",{
             onClick:function(){if(!docSending&&docFileInputRef.current)docFileInputRef.current.click()},
             onDragOver:function(e){e.preventDefault()},
-            onDrop:function(e){e.preventDefault();if(!docSending)addDocFiles(e.dataTransfer.files)},
+            onDrop:function(e){e.preventDefault();if(!docSending){var files=Array.prototype.slice.call(e.dataTransfer.files||[]);addDocFiles(files)}},
             style:{border:"2px dashed "+T.border,borderRadius:12,padding:"22px 16px",textAlign:"center",cursor:docSending?"default":"pointer",background:T.bg2,marginBottom:12,opacity:docSending?0.5:1}},
             React.createElement(Icon,{name:"Paperclip",size:28,color:T.t4}),
             React.createElement("div",{style:{fontSize:13,fontWeight:600,color:T.t2,marginTop:8}},"Arrastrá uno o varios PDF acá"),
             React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},"o hacé clic para elegirlos · solo PDF · se unen en el orden que ves abajo")),
-        React.createElement("input",{ref:docFileInputRef,type:"file",accept:"application/pdf,.pdf",multiple:true,style:{display:"none"},onChange:function(e){addDocFiles(e.target.files);e.target.value=""}}),
+        React.createElement("input",{ref:docFileInputRef,type:"file",accept:"application/pdf,.pdf",multiple:true,style:{display:"none"},onChange:function(e){var files=Array.prototype.slice.call(e.target.files||[]);e.target.value="";addDocFiles(files)}}),
         docFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:240,overflowY:"auto"}},
           docFiles.map(function(p,idx){
             var statusColor=p.error?T.red:(p.uploading?T.t4:T.blue);
@@ -1723,11 +1726,11 @@ function App(){
         React.createElement("div",{
             onClick:function(){if(!supSending&&supFileInputRef.current)supFileInputRef.current.click()},
             onDragOver:function(e){e.preventDefault()},
-            onDrop:function(e){e.preventDefault();if(!supSending)addSupFiles(e.dataTransfer.files)},
+            onDrop:function(e){e.preventDefault();if(!supSending){var files=Array.prototype.slice.call(e.dataTransfer.files||[]);addSupFiles(files)}},
             style:{border:"2px dashed "+T.border,borderRadius:10,padding:"14px 12px",textAlign:"center",cursor:supSending?"default":"pointer",background:T.bg2,marginBottom:10,opacity:supSending?0.5:1}},
             React.createElement("div",{style:{fontSize:12,fontWeight:600,color:T.t3}},"Soltá o hacé clic para agregar archivos"),
             React.createElement("div",{style:{fontSize:11,color:T.t4,marginTop:2}},"PDF o imágenes · 0 o varios")),
-        React.createElement("input",{ref:supFileInputRef,type:"file",accept:"application/pdf,.pdf,image/*",multiple:true,style:{display:"none"},onChange:function(e){addSupFiles(e.target.files);e.target.value=""}}),
+        React.createElement("input",{ref:supFileInputRef,type:"file",accept:"application/pdf,.pdf,image/*",multiple:true,style:{display:"none"},onChange:function(e){var files=Array.prototype.slice.call(e.target.files||[]);e.target.value="";addSupFiles(files)}}),
         supFiles.length>0&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:180,overflowY:"auto"}},
           supFiles.map(function(p){
             var statusColor=p.error?T.red:(p.uploading?T.t4:T.amber);
