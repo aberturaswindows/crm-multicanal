@@ -1116,14 +1116,52 @@ router.post("/contacts/:id/send-supplier-request", async function(req, res) {
 
   pauseAiForContact(db, contact.id, agentName);
 
-  // 1) Si la ventana esta cerrada, mandamos SOLO la plantilla (ya lleva la
-  // descripcion del pedido en {{2}}) y cortamos aca. Los adjuntos no se pueden
-  // mandar todavia: Meta rechaza mensajes libres fuera de la ventana de 24hs
-  // con error "Re-engagement message", aunque se haya mandado una plantilla
-  // recien. Hay que esperar a que el proveedor responda para que la ventana
-  // se abra de verdad; ahi el vendedor manda el PDF/fotos por el chat normal.
+  // 1) Si la ventana esta cerrada:
+  //    - Si el adjunto es un UNICO PDF, usamos la plantilla `solicitud_cotizacion_pdf`
+  //      (header documento) para mandar TODO en un solo mensaje, igual que los
+  //      botones de presupuesto/documentacion.
+  //    - En cualquier otro caso (0 adjuntos, imagen, o mas de 1 archivo), mandamos
+  //      solo la plantilla de texto `solicitud_cotizacion` y los adjuntos quedan
+  //      pendientes hasta que el proveedor responda (Meta rechaza mensajes libres
+  //      fuera de la ventana de 24hs con error "Re-engagement message", aunque se
+  //      haya mandado una plantilla recien).
   if (!windowStatus.open) {
     var nombreProveedor = (contact.name || "").trim() || "Proveedor";
+    var singlePdf = (attachments.length === 1 && (attachments[0].mediaType || "file") !== "image") ? attachments[0] : null;
+
+    if (singlePdf) {
+      var pdfUrl = toPublicUrl(req, singlePdf.url);
+      var headerMedia = { type: "document", url: pdfUrl, filename: singlePdf.filename };
+      templateResult = await whatsapp.sendTemplate(
+        contact.channel_id,
+        "solicitud_cotizacion_pdf",
+        languageCode,
+        [nombreProveedor, text, agentName],
+        headerMedia,
+        phoneLine
+      );
+      var tplPdfContent = "[Plantilla: solicitud_cotizacion_pdf] " + nombreProveedor + " [Adjunto: " + (singlePdf.filename || "PDF") + "]";
+      var tplPdfIns = db.prepare(
+        "INSERT INTO messages (contact_id, direction, content, channel, agent_name, media_type, media_url, original_filename, status) VALUES (?, 'outgoing', ?, ?, ?, 'file', ?, ?, 'pending')"
+      ).run(contact.id, tplPdfContent, contact.channel, agentName, singlePdf.url, singlePdf.filename || null);
+      updateMessageStatus(db, tplPdfIns.lastInsertRowid, templateResult);
+      steps.push({ type: "template_pdf", result: templateResult });
+
+      console.log("[COTIZACION-PROV] " + agentName + " -> " + contact.name + " | ventana: cerrada | plantilla con PDF | exito: " + templateResult.success);
+
+      return res.json({
+        success: templateResult.success,
+        windowWasOpen: false,
+        hoursSinceLastIncoming: windowStatus.hoursSince,
+        templateResult: templateResult,
+        pendingAttachments: false,
+        message_to_agent: templateResult.success
+          ? "Se envio la plantilla con el PDF adjunto."
+          : "Fallo el envio de la plantilla con el PDF.",
+        steps: steps
+      });
+    }
+
     templateResult = await whatsapp.sendTemplate(
       contact.channel_id,
       templateName,
