@@ -978,12 +978,17 @@ function App(){
       if(data.success){
         setShowSupModal(false);setSupText("");setSupFiles([]);setSupSending(false);
         loadMessages(selected.id);loadContacts();
+        if(data.windowWasOpen===false&&data.message_to_agent)alert(data.message_to_agent);
+      }else if(data.windowWasOpen===false){
+        alert(data.message_to_agent||("Fallo el envio de la plantilla \""+SUP_TEMPLATE+"\"."));
+        setSupSending(false);
+        loadMessages(selected.id);
       }else{
         var details=[];
         if(data.templateResult&&!data.templateResult.success)details.push("Plantilla: "+(data.templateResult.error||"error"));
         if(data.textResult&&!data.textResult.success)details.push("Texto: "+(data.textResult.error||"error"));
         if(data.attachmentResults){data.attachmentResults.forEach(function(a){if(a.result&&!a.result.success)details.push((a.filename||"adjunto")+": "+(a.result.error||"error"))})}
-        alert("Algunas partes fallaron:\n\n"+(details.length?details.join("\n"):(data.error||"error desconocido"))+(data.windowWasOpen===false?"\n\nLa ventana de 24hs estaba cerrada. La plantilla \""+SUP_TEMPLATE+"\" debe estar aprobada en Meta y el proveedor debe responder para poder enviarle texto/adjuntos por API.":""));
+        alert("Algunas partes fallaron:\n\n"+(details.length?details.join("\n"):(data.error||"error desconocido")));
         setSupSending(false);
         loadMessages(selected.id);
       }
@@ -1711,7 +1716,7 @@ function App(){
           :React.createElement("div",{style:{fontSize:11,marginBottom:12,padding:"8px 12px",borderRadius:8,background:supWindow.open?T.greenBg:T.amberBg,color:supWindow.open?T.green:T.amber,border:"1px solid "+(supWindow.open?T.green+"33":T.amber+"33")}},
             supWindow.open
               ?"✓ Ventana de 24hs ABIERTA. Se envía texto y adjuntos directo, sin plantilla."
-              :("⚠ Ventana de 24hs CERRADA"+(supWindow.hoursSince?" (último mensaje hace "+Math.round(supWindow.hoursSince)+"hs)":"")+". Primero se envía la plantilla \""+SUP_TEMPLATE+"\" y después el texto y los adjuntos.")),
+              :("⚠ Ventana de 24hs CERRADA"+(supWindow.hoursSince?" (último mensaje hace "+Math.round(supWindow.hoursSince)+"hs)":"")+". Se enviará solo la plantilla \""+SUP_TEMPLATE+"\" con la descripción. Los adjuntos quedarán pendientes hasta que el proveedor responda.")),
         React.createElement("label",{style:lbl},"Detalle del pedido"),
         React.createElement("textarea",{value:supText,onChange:function(e){setSupText(e.target.value)},placeholder:"Detallá medidas, cantidades, plazos, etc.",rows:5,disabled:supSending,style:Object.assign({},inp,{resize:"vertical",marginBottom:12,fontFamily:"inherit",opacity:supSending?0.5:1})}),
         React.createElement("label",{style:lbl},"Adjuntos (opcional)"),
