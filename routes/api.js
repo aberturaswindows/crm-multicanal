@@ -1090,7 +1090,7 @@ router.post("/contacts/:id/send-documentation", async function(req, res) {
 // PEDIR COTIZACION A PROVEEDOR
 // Texto descriptivo OBLIGATORIO + adjuntos opcionales (0..n, PDF o imagenes).
 // Si la ventana de 24hs esta cerrada, primero se envia la plantilla
-// `pedido_cotizacion` (solo texto, {{1}} = nombre del proveedor) y despues
+// `solicitud_cotizacion` (solo texto, {{1}} = nombre del proveedor) y despues
 // el texto + adjuntos por la API normal.
 // ============================================
 
@@ -1103,7 +1103,7 @@ router.post("/contacts/:id/send-supplier-request", async function(req, res) {
   var text = (req.body.text || "").trim();
   var attachments = req.body.attachments || []; // [{url, filename, mediaType}]
   var agentName = req.body.agent_name || "Agente";
-  var templateName = req.body.template_name || "pedido_cotizacion";
+  var templateName = req.body.template_name || "solicitud_cotizacion";
   var languageCode = req.body.language_code || "es";
 
   if (!text) return res.status(400).json({ error: "El texto descriptivo es obligatorio" });
