@@ -1090,8 +1090,8 @@ router.post("/contacts/:id/send-documentation", async function(req, res) {
 // PEDIR COTIZACION A PROVEEDOR
 // Texto descriptivo OBLIGATORIO + adjuntos opcionales (0..n, PDF o imagenes).
 // Si la ventana de 24hs esta cerrada, primero se envia la plantilla
-// `solicitud_cotizacion` (solo texto, {{1}} = nombre del proveedor) y despues
-// el texto + adjuntos por la API normal.
+// `solicitud_cotizacion` (texto, {{1}}=nombre proveedor, {{2}}=descripcion del
+// pedido, {{3}}=firma del agente) y despues el texto + adjuntos por la API normal.
 // ============================================
 
 router.post("/contacts/:id/send-supplier-request", async function(req, res) {
@@ -1123,7 +1123,7 @@ router.post("/contacts/:id/send-supplier-request", async function(req, res) {
       contact.channel_id,
       templateName,
       languageCode,
-      [nombreProveedor],
+      [nombreProveedor, text, agentName],
       null, // sin header
       phoneLine
     );
