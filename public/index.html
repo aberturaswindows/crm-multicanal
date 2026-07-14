@@ -1126,7 +1126,7 @@ function App(){
                   React.createElement("span",{style:{fontSize:13,fontWeight:hasUnread?700:600,color:hasUnread?T.t1:T.t2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:150}},c.name),
                   React.createElement("span",{style:{fontSize:11,color:hasUnread?T.accent:T.t4,flexShrink:0,fontWeight:hasUnread?700:400}},formatTime(c.last_message_at))),
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
-                  React.createElement("span",{style:{fontSize:12,color:hasUnread?T.t2:T.t4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,fontWeight:hasUnread?600:400}},c.last_message||"Sin mensajes"),
+                  React.createElement("span",{title:c.last_message||"",style:{fontSize:12,color:hasUnread?T.t2:T.t4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,fontWeight:hasUnread?600:400}},c.last_message||"Sin mensajes"),
                   hasUnread&&React.createElement("span",{style:{width:9,height:9,borderRadius:"50%",background:T.accent,flexShrink:0,marginLeft:4}})),
                 React.createElement("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},
                   React.createElement(Badge,{color:deptData.color||T.t4},deptData.label||c.department||""),
