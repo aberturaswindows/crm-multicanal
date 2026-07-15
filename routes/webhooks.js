@@ -4,6 +4,7 @@ var getDb = require("../db/setup").getDb;
 var classifyMessage = require("../services/ai-router").classifyMessage;
 var generateAutoReply = require("../services/ai-router").generateAutoReply;
 var detectLostReason = require("../services/ai-router").detectLostReason;
+var mamparas = require("../services/mamparas");
 var whatsapp = require("../services/channels/whatsapp");
 var instagram = require("../services/channels/instagram");
 var facebook = require("../services/channels/facebook");
@@ -263,6 +264,45 @@ async function handleAutoReply(contact, channel) {
             fichaTexto += "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501";
             db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, fichaTexto, channel);
             console.log("[FICHA] Guardada para " + contact.name + " (cotizacion #" + cotizId + ", " + (Array.isArray(r.aberturas) ? r.aberturas.length : 0) + " aberturas)");
+
+            // MAMPARAS: si la ficha incluye mamparas con modelo y cristal, el sistema
+            // calcula la cotizacion (deterministico, lista L106) y la deja como
+            // mensaje interno para que el VENDEDOR la revise y la envie.
+            // Claudia NUNCA envia el precio al cliente.
+            try {
+              if (Array.isArray(r.aberturas)) {
+                var gm = null;
+                if (typeof r.gran_mendoza === "string") {
+                  var gmTxt = r.gran_mendoza.toLowerCase();
+                  if (gmTxt.indexOf("si") === 0 || gmTxt.indexOf("sí") === 0) gm = true;
+                  else if (gmTxt.indexOf("no indicado") === -1 && gmTxt.indexOf("no") === 0) gm = false;
+                }
+                for (var mi = 0; mi < r.aberturas.length; mi++) {
+                  var ab = r.aberturas[mi];
+                  var esMampara = (ab.tipo && String(ab.tipo).toLowerCase().indexOf("mampara") !== -1) || ab.modelo;
+                  if (esMampara && ab.modelo && ab.cristal && ab.ancho_cm && ab.alto_cm) {
+                    var cot = mamparas.cotizarMampara({
+                      modelo: ab.modelo,
+                      ancho_cm: ab.ancho_cm,
+                      alto_cm: ab.alto_cm,
+                      cristal: ab.cristal,
+                      gran_mendoza: gm
+                    });
+                    var cotTexto = mamparas.formatearCotizacion(cot);
+                    if (gm === null && cot.ok) {
+                      cotTexto += "\n\u26A0 No quedo claro si la obra esta dentro del Gran Mendoza: confirmar antes de enviar (dentro suma " + "$299.700 + IVA de medicion/flete/instalacion).";
+                    }
+                    if (ab.cantidad > 1 && cot.ok) {
+                      cotTexto += "\n\u{1F522} Cantidad solicitada: " + ab.cantidad + " unidades (el precio es POR UNIDAD).";
+                    }
+                    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, cotTexto, channel);
+                    console.log("[MAMPARAS] Cotizacion " + (cot.ok ? "calculada" : "fallida") + " para " + contact.name + ": " + (cot.ok ? cot.modelo + " " + cot.medidaCotizada : cot.error));
+                  }
+                }
+              }
+            } catch (mampErr) {
+              console.error("[MAMPARAS] Error cotizando:", mampErr.message);
+            }
           } catch (fichaErr) {
             console.error("[FICHA] Error guardando ficha:", fichaErr.message);
           }
