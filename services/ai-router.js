@@ -367,11 +367,18 @@ async function generateSuggestion(contact, messages) {
   prompt += "Historial de la conversacion:\n" + history + "\n\n";
   prompt += "Genera UNA respuesta breve para el ultimo mensaje del cliente. Solo la respuesta, sin explicaciones ni prefijos.";
 
+  // VISION: adjuntar fotos recientes del cliente para que la sugerencia
+  // pueda analizarlas (nunca decir que "no puede ver imagenes").
+  var sugImageBlocks = buildImageBlocks(messages);
+  var sugContent = sugImageBlocks.length > 0
+    ? sugImageBlocks.concat([{ type: "text", text: prompt + "\nEl cliente envio " + sugImageBlocks.length + " foto(s) adjunta(s): analizalas y usalas para la sugerencia (ej: si se ve el bano, identifica banera vs ducha y hueco frontal/esquinero)." }])
+    : prompt;
+
   try {
     var res = await callAnthropic({
       model: "claude-sonnet-4-6",
       max_tokens: 300,
-      messages: [{ role: "user", content: prompt }]
+      messages: [{ role: "user", content: sugContent }]
     });
 
     return res.data.content && res.data.content[0] ? res.data.content[0].text : "No se pudo generar una sugerencia.";
@@ -620,15 +627,17 @@ async function generateFicha(contact, messages) {
   prompt += "- color: color de la perfileria elegido (si no lo dijo, 'No indicado')\n";
   prompt += "- vidrio: DVH / Simple / No indicado\n";
   prompt += "- medidas: medidas indicadas por el cliente\n";
-  prompt += "- instalacion: Si / No / No indicado\n\n";
+  prompt += "- instalacion: Si / No / No indicado\n";
+  prompt += "- gran_mendoza: Si / No / No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)\n";
+  prompt += "- mamparas: SOLO si el cliente pidio mamparas de bano, un array con cada mampara: modelo Glassic (ej Box Frontal, Blindex, Panel, Open Pivot), cristal (incoloro/color/textura/saten), ancho_cm y alto_cm como INTEGER en centimetros, y cantidad. Si no hay mamparas, array vacio [].\n\n";
   prompt += "Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato EXACTO:\n";
-  prompt += '{"nombre":"...","telefono":"...","direccion":"...","producto":"...","plano":"...","color":"...","vidrio":"...","medidas":"...","instalacion":"..."}\n';
+  prompt += '{"nombre":"...","telefono":"...","direccion":"...","producto":"...","plano":"...","color":"...","vidrio":"...","medidas":"...","instalacion":"...","gran_mendoza":"...","mamparas":[{"modelo":"Box Frontal","cristal":"incoloro","ancho_cm":180,"alto_cm":160,"cantidad":1}]}\n';
   prompt += "Si algun dato no fue mencionado en la conversacion, usa 'No indicado' (o 'No indicada' para direccion/medidas).";
 
   try {
     var res = await callAnthropic({
       model: "claude-sonnet-4-6",
-      max_tokens: 500,
+      max_tokens: 1200,
       messages: [{ role: "user", content: prompt }]
     });
 
