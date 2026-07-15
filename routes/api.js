@@ -4,6 +4,7 @@ var getDb = require("../db/setup").getDb;
 var generateSuggestion = require("../services/ai-router").generateSuggestion;
 var classifyMessage = require("../services/ai-router").classifyMessage;
 var generateFicha = require("../services/ai-router").generateFicha;
+var mamparasSvc = require("../services/mamparas");
 var STAGE_LABELS = require("../services/ai-router").STAGE_LABELS;
 var whatsapp = require("../services/channels/whatsapp");
 var instagram = require("../services/channels/instagram");
@@ -524,7 +525,7 @@ router.post("/contacts/:id/regenerate-ficha", async function(req, res) {
   if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
 
   try {
-    var messages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? AND direction != 'system' ORDER BY created_at ASC").all(contact.id);
+    var messages = db.prepare("SELECT direction, content, media_type, media_url FROM messages WHERE contact_id = ? AND direction != 'system' ORDER BY created_at ASC").all(contact.id);
     if (messages.length === 0) {
       return res.status(400).json({ error: "No hay mensajes en esta conversacion" });
     }
@@ -550,6 +551,41 @@ router.post("/contacts/:id/regenerate-ficha", async function(req, res) {
     var result = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, fichaTexto, contact.channel);
     var message = db.prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid);
     console.log("[FICHA] Regenerada para " + contact.name);
+
+    // MAMPARAS: si la ficha detecto mamparas con datos completos, calcular la
+    // cotizacion con la lista de precios (deterministico) y dejarla como
+    // mensaje interno para que el vendedor la revise y la envie.
+    try {
+      if (Array.isArray(resumen.mamparas)) {
+        var gm = null;
+        if (typeof resumen.gran_mendoza === "string") {
+          var gmTxt = resumen.gran_mendoza.toLowerCase();
+          if (gmTxt.indexOf("si") === 0 || gmTxt.indexOf("sí") === 0) gm = true;
+          else if (gmTxt.indexOf("no indicado") === -1 && gmTxt.indexOf("no") === 0) gm = false;
+        }
+        for (var mi = 0; mi < resumen.mamparas.length; mi++) {
+          var mp = resumen.mamparas[mi];
+          if (mp.modelo && mp.cristal && mp.ancho_cm && mp.alto_cm) {
+            var cot = mamparasSvc.cotizarMampara({
+              modelo: mp.modelo, ancho_cm: mp.ancho_cm, alto_cm: mp.alto_cm,
+              cristal: mp.cristal, gran_mendoza: gm
+            });
+            var cotTexto = mamparasSvc.formatearCotizacion(cot);
+            if (gm === null && cot.ok) {
+              cotTexto += "\n\u26A0 No quedo claro si la obra esta dentro del Gran Mendoza: confirmar antes de enviar (dentro suma $299.700 + IVA de medicion/flete/instalacion).";
+            }
+            if (mp.cantidad > 1 && cot.ok) {
+              cotTexto += "\n\u{1F522} Cantidad solicitada: " + mp.cantidad + " unidades (el precio es POR UNIDAD).";
+            }
+            db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, cotTexto, contact.channel);
+            console.log("[MAMPARAS] Cotizacion " + (cot.ok ? "calculada" : "fallida") + " (ficha manual) para " + contact.name);
+          }
+        }
+      }
+    } catch (mampErr) {
+      console.error("[MAMPARAS] Error cotizando desde ficha manual:", mampErr.message);
+    }
+
     res.json({ success: true, message: message, resumen: resumen });
   } catch (err) {
     console.error("[FICHA] Error regenerando:", err.message);
@@ -902,7 +938,7 @@ router.get("/contacts/:id/suggestion", async function(req, res) {
   var db = getDb();
   var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
   if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
-  var messages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(req.params.id);
+  var messages = db.prepare("SELECT direction, content, media_type, media_url FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(req.params.id);
   var suggestion = await generateSuggestion(contact, messages);
   res.json({ suggestion: suggestion });
 });
@@ -911,7 +947,7 @@ router.post("/contacts/:id/reclassify", async function(req, res) {
   var db = getDb();
   var contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(req.params.id);
   if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
-  var messages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(req.params.id);
+  var messages = db.prepare("SELECT direction, content, media_type, media_url FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(req.params.id);
   var allText = messages.filter(function(m) { return m.direction === "incoming"; }).map(function(m) { return m.content; }).join(" ");
   var classification = await classifyMessage(allText, messages);
   db.prepare("UPDATE contacts SET department = ?, ai_confidence = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(classification.department, classification.confidence, contact.id);
