@@ -1,3 +1,4 @@
+var mamparas = require("./mamparas");
 var axios = require("axios");
 
 // Wrapper con retry + backoff exponencial para llamadas a Anthropic API.
@@ -315,6 +316,7 @@ async function generateSuggestion(contact, messages) {
   var prompt = "Sos Claudia, la asistente virtual de atencion al cliente de Aberturas Windows, empresa especializada en aberturas a medida de aluminio y PVC en Mendoza, Argentina.\n\n";
   prompt += CLAUDIA_PERSONA + "\n\n";
   prompt += "CONOCIMIENTO DE LA EMPRESA:\n" + COMPANY_KNOWLEDGE + "\n\n";
+  prompt += mamparas.MAMPARAS_GUIA + "\n\n";
   prompt += "REGLAS DE RESPUESTA:\n";
   prompt += "- Trato: SIEMPRE de USTED al cliente. Nunca tutear.\n";
   prompt += "- Tono: profesional y cálido, como un asesor argentino de confianza.\n";
@@ -431,6 +433,7 @@ async function generateAutoReply(contact, messages) {
   var prompt = "Sos Claudia, la asistente virtual de atencion al cliente de Aberturas Windows.\n\n";
   prompt += CLAUDIA_PERSONA + "\n\n";
   prompt += "CONOCIMIENTO DE LA EMPRESA:\n" + COMPANY_KNOWLEDGE + "\n\n";
+  prompt += mamparas.MAMPARAS_GUIA + "\n\n";
   prompt += stageInstructions + "\n";
   prompt += "REGLAS GENERALES:\n";
   prompt += "- Trato: SIEMPRE de USTED al cliente. Nunca tutear.\n";
@@ -457,7 +460,7 @@ async function generateAutoReply(contact, messages) {
   prompt += '- "continuar": seguir en la etapa actual sin cambios\n';
   prompt += '\nIMPORTANTE - FICHA RESUMEN:\n';
   prompt += 'Cuando stage_assessment sea "datos_completos", DEBES incluir el campo "resumen" con los datos recopilados, con cada abertura como objeto separado y medidas en CENTÍMETROS como enteros:\n';
-  prompt += '{"reply":"tu respuesta","stage_assessment":"datos_completos","resumen":{"nombre":"nombre y apellido","telefono":"numero o No indicado","instalacion":"Si/No","direccion":"direccion de la obra o No requiere instalacion","tiene_plano":"Si/No","color":"color elegido o No indicado","vidrio":"DVH o Simple o No indicado","aberturas":[{"tipo":"corrediza/de abrir/mampara/etc","ancho_cm":120,"alto_cm":80,"cantidad":1}],"notas":"datos adicionales o vacio"}}\n';
+  prompt += '{"reply":"tu respuesta","stage_assessment":"datos_completos","resumen":{"nombre":"nombre y apellido","telefono":"numero o No indicado","instalacion":"Si/No","direccion":"direccion de la obra o No requiere instalacion","tiene_plano":"Si/No","color":"color elegido o No indicado","vidrio":"DVH o Simple o No indicado","aberturas":[{"tipo":"corrediza/de abrir/mampara/etc","modelo":"solo para mamparas: nombre del modelo Glassic (ej Box Frontal, Open Pivot, Blindex) o null","cristal":"solo para mamparas: incoloro/color/textura/saten o null","ancho_cm":120,"alto_cm":80,"cantidad":1}],"gran_mendoza":"Si/No/No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)","notas":"datos adicionales o vacio"}}\n';
   prompt += 'REGLAS para aberturas: ancho_cm y alto_cm son INTEGER en centímetros (si el cliente dijo 1.20m, convertí a 120). Si no se sabe un valor, usá null. Si no se indicaron medidas, aberturas es [].\n';
   prompt += 'Si stage_assessment NO es "datos_completos", deja resumen como null.\n';
 
