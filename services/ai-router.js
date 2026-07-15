@@ -1,4 +1,7 @@
 var mamparas = require("./mamparas");
+var fs = require("fs");
+var path = require("path");
+var MEDIA_DIR = fs.existsSync("/data") ? "/data/media" : path.join(__dirname, "..", "data", "media");
 var axios = require("axios");
 
 // Wrapper con retry + backoff exponencial para llamadas a Anthropic API.
@@ -238,6 +241,31 @@ function getArgentinaTime() {
   return { hour: hour, greeting: greeting };
 }
 
+
+// Construye bloques de imagen (vision) con las ultimas fotos enviadas por el cliente.
+// Devuelve un array de content blocks para la API de Anthropic (max 3 imagenes, max 4MB c/u).
+function buildImageBlocks(messages) {
+  var blocks = [];
+  var extMime = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif" };
+  var recientes = messages.slice(-10);
+  for (var i = recientes.length - 1; i >= 0 && blocks.length < 3; i--) {
+    var m = recientes[i];
+    if (m.direction !== "incoming" || m.media_type !== "image" || !m.media_url) continue;
+    try {
+      var filename = m.media_url.split("/").pop();
+      var filepath = path.join(MEDIA_DIR, filename);
+      if (!fs.existsSync(filepath)) continue;
+      var stat = fs.statSync(filepath);
+      if (stat.size > 4 * 1024 * 1024) continue;
+      var ext = path.extname(filename).toLowerCase();
+      var mime = extMime[ext] || "image/jpeg";
+      var b64 = fs.readFileSync(filepath).toString("base64");
+      blocks.unshift({ type: "image", source: { type: "base64", media_type: mime, data: b64 } });
+    } catch (e) { /* si falla una imagen, seguimos sin ella */ }
+  }
+  return blocks;
+}
+
 function formatMessageForHistory(m) {
   var role = m.direction === "incoming" ? "Cliente" : "Agente";
   var texto = m.content;
@@ -464,11 +492,23 @@ async function generateAutoReply(contact, messages) {
   prompt += 'REGLAS para aberturas: ancho_cm y alto_cm son INTEGER en centímetros (si el cliente dijo 1.20m, convertí a 120). Si no se sabe un valor, usá null. Si no se indicaron medidas, aberturas es [].\n';
   prompt += 'Si stage_assessment NO es "datos_completos", deja resumen como null.\n';
 
+  // VISION: si el cliente mando fotos recientes, se adjuntan para que Claudia
+  // las analice de verdad (ej: foto del bano -> detectar banera vs ducha,
+  // hueco frontal vs esquinero, y asesorar sin preguntar lo obvio).
+  var imageBlocks = buildImageBlocks(messages);
+  var userContent;
+  if (imageBlocks.length > 0) {
+    prompt += '\nEl cliente envio ' + imageBlocks.length + ' foto(s) adjunta(s) en esta conversacion. ANALIZALAS: si se ve el bano, identifica si tiene BANERA o DUCHA/receptaculo, si el hueco es frontal o esquinero, y usa esa informacion para asesorar directamente SIN preguntar lo que ya se ve en la foto. Si algo no se distingue con claridad, ahi si pregunta.\n';
+    userContent = imageBlocks.concat([{ type: "text", text: prompt }]);
+  } else {
+    userContent = prompt;
+  }
+
   try {
     var res = await callAnthropic({
       model: "claude-sonnet-4-6",
-      max_tokens: 600,
-      messages: [{ role: "user", content: prompt }]
+      max_tokens: 1500,
+      messages: [{ role: "user", content: userContent }]
     });
 
     var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
@@ -491,7 +531,15 @@ async function generateAutoReply(contact, messages) {
 
       return { reply: reply, stageChange: stageChange, resumen: resumen };
     } catch (parseErr) {
-      return { reply: text, stageChange: null, resumen: null };
+      // NUNCA mandar el JSON crudo al cliente. Intentamos rescatar solo el campo reply;
+      // si no se puede, mejor no responder nada.
+      console.error("[CLAUDIA] Respuesta no parseable (posible truncamiento). Largo: " + text.length);
+      var rescued = null;
+      var mm = text.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (mm) {
+        try { rescued = JSON.parse('"' + mm[1] + '"'); } catch (e2) { rescued = null; }
+      }
+      return { reply: rescued, stageChange: null, resumen: null };
     }
   } catch (err) {
     console.error("Error generando auto-reply:", err.message);
