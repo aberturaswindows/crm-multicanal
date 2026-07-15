@@ -185,7 +185,7 @@ function handleStatusUpdate(statusEvent) {
 async function handleAutoReply(contact, channel) {
   try {
     var db = getDb();
-    var messages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(contact.id);
+    var messages = db.prepare("SELECT direction, content, media_type, media_url FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(contact.id);
     var result = await generateAutoReply(contact, messages);
 
     if (!result.reply) {
