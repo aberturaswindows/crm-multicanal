@@ -1095,7 +1095,7 @@ function App(){
           /* Search */
           React.createElement("div",{style:{position:"relative",marginBottom:8}},
             React.createElement(Icon,{name:"Search",size:14,style:{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}),
-            React.createElement("input",{value:searchText,onChange:function(e){setSearchText(e.target.value)},placeholder:"Buscar contacto o mensaje…",style:Object.assign({},inp,{paddingLeft:32,fontSize:12})})),
+            React.createElement("input",{value:searchText,onChange:function(e){setSearchText(e.target.value)},placeholder:"Buscar",style:Object.assign({},inp,{paddingLeft:32,fontSize:12.5,border:"none",background:"transparent",padding:"10px 12px 10px 32px"})})),
           /* Channel filters */
           React.createElement("div",{style:{display:"flex",gap:4,marginBottom:8}},
             [["all","Todos",T.accent],["unread","No leídos "+( totalUnread>0?"("+totalUnread+")":""),T.accent],
@@ -1117,9 +1117,9 @@ function App(){
             var chData=CHANNELS[c.channel]||{};var isSelected=selected&&selected.id===c.id;var hasUnread=!!c.is_unread;var deptData=DEPARTMENTS[c.department]||{};
             return React.createElement("div",{key:c.id,onClick:function(){selectContact(c)},
               onContextMenu:function(e){e.preventDefault();setCtxMenu({contact:c,x:e.clientX,y:e.clientY})},
-              style:{display:"flex",gap:10,padding:"12px 12px",cursor:"pointer",alignItems:"flex-start",
+              style:{display:"flex",gap:12,padding:"13px 16px",cursor:"pointer",alignItems:"flex-start",
                 background:isSelected?T.hover:"transparent",borderLeft:"3px solid "+(isSelected?T.accent:"transparent"),
-                borderBottom:"1px solid "+T.border+"55",transition:"background .1s"}},
+                borderBottom:"none",borderRadius:10,margin:"0 6px",transition:"background .1s"}},
               React.createElement(Avatar,{name:c.name,channel:c.channel,size:40,profilePic:c.profile_picture_url}),
               React.createElement("div",{style:{flex:1,minWidth:0}},
                 React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}},
@@ -1308,10 +1308,10 @@ function App(){
               React.createElement("button",{onClick:function(){setShowClipMenu(!showClipMenu);setShowContactPicker(false);setShowReminderForm(false)},
                 style:{width:36,height:36,borderRadius:"50%",border:"none",background:showClipMenu?T.accent:T.hover,color:showClipMenu?"#fff":T.t4,fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s",transform:showClipMenu?"rotate(45deg)":"none",fontWeight:400,lineHeight:1}},"+"),
               React.createElement("textarea",{value:msgText,onChange:function(e){setMsgText(e.target.value)},onKeyDown:function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg()}},placeholder:replyingTo?"Responder…":"Escribir mensaje… (Enter para enviar)",rows:1,
-                style:{flex:1,resize:"none",border:"1px solid "+T.border,borderRadius:10,padding:"8px 16px",fontSize:13.5,fontFamily:"inherit",color:T.t1,outline:"none",minHeight:40,maxHeight:100,background:T.bg,lineHeight:1.5}}),
+                style:{flex:1,resize:"none",border:"none",borderBottom:"1px solid "+T.border,borderRadius:0,padding:"10px 4px",fontSize:13.5,fontFamily:"inherit",color:T.t1,outline:"none",minHeight:40,maxHeight:100,background:"transparent",lineHeight:1.5}}),
               React.createElement("button",{onClick:sendMsg,
-                style:{width:38,height:38,borderRadius:10,border:"none",background:T.accent,color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
-                React.createElement(Icon,{name:"Send",size:15,color:"#fff"}))
+                style:{width:38,height:38,borderRadius:10,border:"none",background:"transparent",color:T.accent,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
+                React.createElement(Icon,{name:"Send",size:17,color:T.accent}))
             )
           )
         ):React.createElement("div",{style:{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:T.t4}},
