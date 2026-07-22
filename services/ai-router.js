@@ -72,12 +72,20 @@ var COMPANY_KNOWLEDGE = [
   "CORREOS DE CONTACTO (USO CORRECTO - NO CONFUNDIR):",
   "- ventas@aberturaswindows.com.ar -> consultas comerciales, envio de planos, croquis, fotos, pedidos de cotizacion y presupuestos. Es el correo del sector Ventas (el mismo sector que atiende este chat de WhatsApp).",
   "- medicionesyservicios@aberturaswindows.com.ar -> EXCLUSIVAMENTE para coordinar mediciones de obra en domicilio (una vez aprobado un presupuesto) o servicios tecnicos post-venta. NUNCA usar este correo para enviar planos o pedir cotizaciones.",
+  "- msoriano@aberturaswindows.com.ar -> EXCLUSIVAMENTE para recepcion de CV / busquedas laborales. NUNCA usar este correo para cotizaciones, planos ni consultas comerciales.",
   "",
   "ENVIO DE PLANOS / ARCHIVOS PARA COTIZAR:",
   "- Cuando un cliente quiera enviar planos, croquis, fotos o medidas para cotizar carpinteria, SIEMPRE sugerir PRIMERO que los envie por este mismo chat de WhatsApp, ya que esta hablando directamente con el sector de Ventas (261-353-9384).",
   "- Solo si el cliente prefiere o insiste en usar correo electronico, indicar: ventas@aberturaswindows.com.ar",
   "- NUNCA dar el correo medicionesyservicios@aberturaswindows.com.ar para envio de planos o solicitudes de cotizacion.",
   "- Ejemplo correcto: 'Puede enviarmelos directamente por aca, este chat es con el sector de Ventas asi que el equipo los recibe y los evalua. Si prefiere correo, tambien puede escribir a ventas@aberturaswindows.com.ar.'",
+  "",
+  "BUSQUEDAS LABORALES / RECEPCION DE CV:",
+  "- Si una persona pregunta por trabajo, empleo o busquedas laborales (ej: 'estan tomando gente?', 'tienen busquedas abiertas?', 'quiero trabajar con ustedes', 'donde dejo mi CV?'), responder que puede adjuntar su CV directamente por este mismo canal, o si lo prefiere, enviarlo por correo a msoriano@aberturaswindows.com.ar.",
+  "- Invitarla a adjuntar el CV por aca mismo (PDF, imagen o archivo).",
+  "- Si la persona adjunta un CV o envia sus datos laborales, agradecer con un mensaje como: 'Muchas gracias por enviarnos su CV. Lo estaremos analizando y en caso de avanzar nos comunicaremos con usted.'",
+  "- En consultas laborales NO pedir datos de cotizacion, NO derivar a ventas, NO ofrecer presupuestos y NO prometer plazos de respuesta ni entrevistas.",
+  "- No confirmar ni negar si hay busquedas abiertas: simplemente indicar que puede enviar su CV y que queda en nuestra base para futuras busquedas.",
   "",
   "PRODUCTOS PRINCIPALES:",
   "- Aberturas de ALUMINIO: desde media prestacion hasta RPT (maxima prestacion). Extrusoras: FLAMIA y ALUWIND (linea Enkel de alta prestacion, minimalista).",
@@ -357,6 +365,7 @@ async function generateSuggestion(contact, messages) {
   prompt += "- Si preguntan por plazos, dar los rangos generales según el material y color.\n";
   prompt += "- Invitar al cliente a visitar el showroom cuando sea apropiado.\n";
   prompt += "- ENVÍO DE PLANOS/CROQUIS/FOTOS PARA COTIZAR: SIEMPRE sugerir PRIMERO que los envíe por este mismo chat de WhatsApp (es Ventas). Solo si insiste en correo, indicar ventas@aberturaswindows.com.ar. NUNCA dar el mail medicionesyservicios@ para envío de planos o cotizaciones (ese es solo para coordinar mediciones de obra y servicios post-venta).\n";
+  prompt += "- BÚSQUEDAS LABORALES / CV: Si preguntan por trabajo o búsquedas laborales, invitá a adjuntar el CV por este mismo canal, o si prefiere por correo a msoriano@aberturaswindows.com.ar. Si adjunta un CV, agradecé e informá que lo estaremos analizando y que en caso de avanzar nos comunicaremos con usted. NO pidas datos de cotización, NO derives a ventas y NO prometas plazos de respuesta.\n";
   prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
   prompt += "- Si el cliente envió un mensaje de voz, respondé normalmente y preguntá en qué le podés ayudar.\n";
   prompt += "- Si el cliente consulta por servicio de carpintería/post-venta, seguí el protocolo de verificación de obra propia.\n";
@@ -437,6 +446,7 @@ async function generateAutoReply(contact, messages) {
     stageInstructions += "- Si el cliente ya proporcionó TODOS los datos necesarios, confirmá que se va a preparar el presupuesto en hasta 72 hs hábiles.\n";
     stageInstructions += "- NO repitas datos que el cliente ya proporcionó en mensajes anteriores.\n";
     stageInstructions += "- Si el cliente consulta por servicio de carpintería/reparación, seguí el protocolo de servicio post-venta: verificar que sea obra nuestra, informar sobre visita técnica ($70.000 IVA inc.).\n";
+    stageInstructions += "- Si la consulta es por TRABAJO o búsquedas laborales (no es un cliente): NO pidas datos de cotización. Invitá a adjuntar el CV por este canal o enviarlo a msoriano@aberturaswindows.com.ar, y si lo adjunta, agradecé e informá que lo estaremos analizando. Mantené stage_assessment en 'continuar'.\n";
   } else if (stage === "presupuesto_enviado" || stage === "seguimiento") {
     stageInstructions = "ETAPA ACTUAL: Seguimiento de presupuesto.\n";
     stageInstructions += "Seguimiento numero: " + ((contact.followup_count || 0) + 1) + " de 5.\n";
@@ -478,6 +488,7 @@ async function generateAutoReply(contact, messages) {
   prompt += "- NUNCA dar precios por mensaje. Siempre ofrecé armar un presupuesto formal.\n";
   prompt += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho o el alto?'\n";
   prompt += "- ENVÍO DE PLANOS/CROQUIS/FOTOS PARA COTIZAR: SIEMPRE sugerir PRIMERO que los envíe por este mismo chat de WhatsApp (es Ventas). Solo si insiste en correo, indicar ventas@aberturaswindows.com.ar. NUNCA dar el mail medicionesyservicios@ para envío de planos o cotizaciones (ese es solo para coordinar mediciones de obra y servicios post-venta).\n";
+  prompt += "- BÚSQUEDAS LABORALES / CV: Si preguntan por trabajo o búsquedas laborales, invitá a adjuntar el CV por este mismo canal, o si prefiere por correo a msoriano@aberturaswindows.com.ar. Si adjunta un CV, agradecé e informá que lo estaremos analizando y que en caso de avanzar nos comunicaremos con usted. NO pidas datos de cotización, NO derives a ventas y NO prometas plazos de respuesta.\n";
   prompt += "- Respuestas breves: 2-3 oraciones máximo.\n";
   prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
   prompt += "- Si el cliente envió un mensaje de voz, respondé normalmente y preguntá en qué le podés ayudar.\n\n";
@@ -493,6 +504,7 @@ async function generateAutoReply(contact, messages) {
   prompt += '- "cliente_acepta": el cliente confirma que va a hacer el trabajo con nosotros\n';
   prompt += '- "cliente_rechaza": el cliente dice que NO va a hacer el trabajo\n';
   prompt += '- "continuar": seguir en la etapa actual sin cambios\n';
+  prompt += '\nNOTA: Si la conversacion es una consulta LABORAL (busqueda de trabajo / envio de CV), usa siempre "continuar" y deja resumen como null.\n';
   prompt += '\nIMPORTANTE - FICHA RESUMEN:\n';
   prompt += 'Cuando stage_assessment sea "datos_completos", DEBES incluir el campo "resumen" con los datos recopilados, con cada abertura como objeto separado y medidas en CENTÍMETROS como enteros:\n';
   prompt += '{"reply":"tu respuesta","stage_assessment":"datos_completos","resumen":{"nombre":"nombre y apellido","telefono":"numero o No indicado","instalacion":"Si/No","direccion":"direccion de la obra o No requiere instalacion","tiene_plano":"Si/No","color":"color elegido o No indicado","vidrio":"DVH o Simple o No indicado","aberturas":[{"tipo":"corrediza/de abrir/mampara/etc","modelo":"solo para mamparas: nombre del modelo Glassic (ej Box Frontal, Open Pivot, Blindex) o null","cristal":"solo para mamparas: incoloro/color/textura/saten o null","ancho_cm":120,"alto_cm":80,"cantidad":1}],"gran_mendoza":"Si/No/No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)","notas":"datos adicionales o vacio"}}\n';
@@ -505,7 +517,7 @@ async function generateAutoReply(contact, messages) {
   var imageBlocks = buildImageBlocks(messages);
   var userContent;
   if (imageBlocks.length > 0) {
-    prompt += '\nEl cliente envio ' + imageBlocks.length + ' foto(s) adjunta(s) en esta conversacion. ANALIZALAS: si se ve el bano, identifica si tiene BANERA o DUCHA/receptaculo, si el hueco es frontal o esquinero, y usa esa informacion para asesorar directamente SIN preguntar lo que ya se ve en la foto. Si algo no se distingue con claridad, ahi si pregunta.\n';
+    prompt += '\nEl cliente envio ' + imageBlocks.length + ' foto(s) adjunta(s) en esta conversacion. ANALIZALAS: si se ve el bano, identifica si tiene BANERA o DUCHA/receptaculo, si el hueco es frontal o esquinero, y usa esa informacion para asesorar directamente SIN preguntar lo que ya se ve en la foto. Si algo no se distingue con claridad, ahi si pregunta. Si la imagen es un CV (curriculum vitae), NO analices su contenido en la respuesta: solo agradece el envio e informa que lo estaremos analizando y que en caso de avanzar nos comunicaremos.\n';
     userContent = imageBlocks.concat([{ type: "text", text: prompt }]);
   } else {
     userContent = prompt;
