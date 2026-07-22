@@ -26,6 +26,12 @@ var autoReplyProcessing = false;
 var MIN_DELAY_BETWEEN_REPLIES_MS = 1500; // 1.5s entre cada respuesta
 var debounceTimers = {}; // contactId -> setTimeout handle; espera 10s de silencio antes de disparar auto-reply
 
+// ANTI-DUPLICADO SALIENTE: si la respuesta generada es identica al ultimo mensaje
+// saliente enviado a ese contacto dentro de esta ventana, NO se envia de nuevo.
+// Cubre el caso de dos mensajes del cliente separados por mas de 10s (dos debounce)
+// que generan respuestas casi identicas.
+var DUPLICATE_REPLY_WINDOW_MS = 2 * 60 * 1000; // 2 minutos
+
 async function processAutoReplyQueue() {
   if (autoReplyProcessing) return;
   autoReplyProcessing = true;
@@ -64,6 +70,22 @@ function isAutoReplyEnabled(channel) {
     db.exec("CREATE TABLE IF NOT EXISTS auto_reply_settings (channel TEXT PRIMARY KEY, enabled INTEGER DEFAULT 0)");
     var setting = db.prepare("SELECT enabled FROM auto_reply_settings WHERE channel = ?").get(channel);
     return setting && setting.enabled === 1;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Compara la respuesta generada contra el ultimo mensaje saliente del contacto.
+// Devuelve true si es un duplicado reciente (mismo texto dentro de la ventana).
+function isDuplicateReply(db, contactId, replyText) {
+  try {
+    var lastOut = db.prepare("SELECT content, created_at FROM messages WHERE contact_id = ? AND direction = 'outgoing' ORDER BY created_at DESC, id DESC LIMIT 1").get(contactId);
+    if (!lastOut || !lastOut.content) return false;
+    if (lastOut.content.trim() !== replyText.trim()) return false;
+    // created_at de SQLite (CURRENT_TIMESTAMP) viene en UTC formato "YYYY-MM-DD HH:MM:SS"
+    var ts = new Date(String(lastOut.created_at).replace(" ", "T") + "Z").getTime();
+    if (isNaN(ts)) return true; // texto identico y fecha ilegible: mejor no reenviar
+    return (Date.now() - ts) < DUPLICATE_REPLY_WINDOW_MS;
   } catch (e) {
     return false;
   }
@@ -310,6 +332,14 @@ async function handleAutoReply(contact, channel) {
       }
     }
 
+    // ANTI-DUPLICADO: si la respuesta generada es identica al ultimo mensaje saliente
+    // reciente de este contacto, no la enviamos de nuevo (ej: cliente mando texto y
+    // archivo separados por mas de 10s y ambos debounce generaron la misma respuesta).
+    if (isDuplicateReply(db, contact.id, result.reply)) {
+      console.log("[ANTI-DUP] Respuesta identica a la ultima enviada a " + contact.name + " hace menos de " + (DUPLICATE_REPLY_WINDOW_MS / 60000) + " min. No se reenvia.");
+      return;
+    }
+
     var insertResult = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, 'Claudia', 'pending')").run(contact.id, result.reply, channel);
     var msgId = insertResult.lastInsertRowid;
 
@@ -328,6 +358,18 @@ async function handleAutoReply(contact, channel) {
 async function handleIncomingMessage(normalized) {
   var db = getDb();
   try {
+    // DEDUPE ENTRANTE: Meta puede reintentar el mismo webhook (misma entrega dos veces).
+    // Si ya guardamos un mensaje entrante con este channel_message_id, lo ignoramos
+    // por completo (no se guarda de nuevo ni dispara auto-reply).
+    if (normalized.messageId) {
+      var yaExiste = db.prepare("SELECT id FROM messages WHERE channel_message_id = ? AND direction = 'incoming' LIMIT 1").get(normalized.messageId);
+      if (yaExiste) {
+        console.log("[DEDUPE] Webhook repetido ignorado (channel_message_id=" + normalized.messageId + ")");
+        var contactoExistente = db.prepare("SELECT * FROM contacts WHERE channel = ? AND channel_id = ?").get(normalized.channel, normalized.channelId);
+        return { contact: contactoExistente || null, classification: null, duplicated: true };
+      }
+    }
+
     if (normalized._needsDownload) {
       await downloadMediaIfNeeded(normalized);
     }
