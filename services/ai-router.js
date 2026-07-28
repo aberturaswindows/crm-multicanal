@@ -100,6 +100,29 @@ var COMPANY_KNOWLEDGE = [
   "- Puertas automaticas: AUDOOR.",
   "- Toldos: IPROA.",
   "",
+  "LINEAS DE PERFILERIA POR MARCA (MUY IMPORTANTE - NO CONFUNDIR MARCAS):",
+  "- FLAMIA S.A. (ALUMINIO). Las siguientes lineas son TODAS de FLAMIA, y SI las trabajamos:",
+  "  * Europa 60",
+  "  * Novissima",
+  "  * Clasica 60",
+  "  * Domo 60",
+  "  * Domo 114",
+  "  * Domo 60 RPT",
+  "  * Novissima RPT",
+  "  * Ecoslide RPT",
+  "- ALUWIND (ALUMINIO): linea Enkel (alta prestacion, minimalista).",
+  "- REHAU (PVC). Las siguientes lineas son TODAS de REHAU, y SI las trabajamos:",
+  "  * Euro-Design (Eurodesign)",
+  "  * Prestige 70",
+  "  * High Design (Highdesign)",
+  "- Si el cliente pregunta por una linea de REHAU que no figura aca, NO la niegues ni la inventes: responde 'Lo consulto con el area tecnica y le confirmo'.",
+  "- ATENCION: Europa 60, Novissima, Clasica 60, Domo y Ecoslide son lineas de ALUMINIO de FLAMIA. Euro-Design, Prestige 70 y High Design son lineas de PVC de REHAU. NO las mezcles: NUNCA atribuyas una linea a una marca distinta de la indicada en esta lista. Ojo con la confusion tipica: 'Europa 60' es de FLAMIA (aluminio) y 'Euro-Design' es de REHAU (PVC), son lineas distintas de marcas distintas.",
+  "",
+  "REGLA GENERAL SOBRE LINEAS, MARCAS Y PRODUCTOS:",
+  "- NUNCA afirmes que NO trabajamos una linea, marca o producto, salvo que este conocimiento lo diga explicitamente.",
+  "- Si el cliente menciona una linea, marca o producto que NO figura en este conocimiento, NO lo niegues, NO lo confirmes y NO inventes de que marca es: responde 'Lo consulto con el area tecnica y le confirmo'.",
+  "- Tampoco inventes detalles sobre archivos, planos o fotos que el cliente no envio en esta conversacion.",
+  "",
   "LINEA CANADIAN PROFILE (REVESTIMIENTOS, PISOS Y DECK WPC/SPC):",
   "Ademas de aberturas, trabajamos productos de la marca CANADIAN PROFILE. Si un cliente consulta por esta marca, confirmar que SI somos distribuidores y la trabajamos.",
   "Lineas disponibles:",
@@ -252,24 +275,41 @@ function getArgentinaTime() {
 
 // Construye bloques de imagen (vision) con las ultimas fotos enviadas por el cliente.
 // Devuelve un array de content blocks para la API de Anthropic (max 3 imagenes, max 4MB c/u).
-function buildImageBlocks(messages) {
+// contexto (opcional): string para identificar en los logs quien pidio las imagenes
+// (ej: "auto-reply Soledad"). Cada imagen salteada loguea el motivo exacto, y al final
+// se loguea un resumen [VISION] para poder diagnosticar fallas desde Railway.
+function buildImageBlocks(messages, contexto) {
   var blocks = [];
+  var candidatas = 0;
+  var ctx = contexto ? " (" + contexto + ")" : "";
   var extMime = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif" };
   var recientes = messages.slice(-10);
   for (var i = recientes.length - 1; i >= 0 && blocks.length < 3; i--) {
     var m = recientes[i];
     if (m.direction !== "incoming" || m.media_type !== "image" || !m.media_url) continue;
+    candidatas++;
     try {
       var filename = m.media_url.split("/").pop();
       var filepath = path.join(MEDIA_DIR, filename);
-      if (!fs.existsSync(filepath)) continue;
+      if (!fs.existsSync(filepath)) {
+        console.error("[VISION] Imagen salteada: archivo no existe en " + filepath + ctx);
+        continue;
+      }
       var stat = fs.statSync(filepath);
-      if (stat.size > 4 * 1024 * 1024) continue;
+      if (stat.size > 4 * 1024 * 1024) {
+        console.error("[VISION] Imagen salteada: " + filename + " pesa " + Math.round(stat.size / 1024) + " KB (limite 4096 KB)" + ctx);
+        continue;
+      }
       var ext = path.extname(filename).toLowerCase();
       var mime = extMime[ext] || "image/jpeg";
       var b64 = fs.readFileSync(filepath).toString("base64");
       blocks.unshift({ type: "image", source: { type: "base64", media_type: mime, data: b64 } });
-    } catch (e) { /* si falla una imagen, seguimos sin ella */ }
+    } catch (e) {
+      console.error("[VISION] Error leyendo imagen " + m.media_url + ": " + e.message + ctx);
+    }
+  }
+  if (candidatas > 0) {
+    console.log("[VISION] " + blocks.length + " de " + candidatas + " imagen(es) adjuntadas" + ctx);
   }
   return blocks;
 }
@@ -360,6 +400,8 @@ async function generateSuggestion(contact, messages) {
   prompt += "- NUNCA inventes información técnica. Si no sabés, decile 'Lo consulto con el área técnica y le confirmo'.\n";
   prompt += "- NUNCA dar precios por mensaje. Siempre ofrecé armar un presupuesto formal.\n";
   prompt += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho o el alto?'\n";
+  prompt += "- LÍNEAS Y MARCAS: NUNCA afirmes que NO trabajamos una línea o producto salvo que el conocimiento lo indique explícitamente. Si mencionan una línea que no figura en el conocimiento, respondé 'Lo consulto con el área técnica y le confirmo'. NUNCA atribuyas una línea a otra marca (ej: Europa 60 y Novissima son de FLAMIA, no de REHAU).\n";
+  prompt += "- FORMATO: Texto plano de WhatsApp. NUNCA uses markdown ni dobles asteriscos (**palabra**). Si necesitás resaltar algo, usá un solo asterisco (*palabra*), que es la negrita de WhatsApp, o directamente no resaltes.\n";
   prompt += "- Si el cliente pregunta por un producto, explicar brevemente y pedir los datos para cotizar.\n";
   prompt += "- Si el cliente ya dio los datos para cotizar, confirmar que se va a preparar el presupuesto en hasta 72 hs hábiles.\n";
   prompt += "- Si preguntan por plazos, dar los rangos generales según el material y color.\n";
@@ -378,7 +420,7 @@ async function generateSuggestion(contact, messages) {
 
   // VISION: adjuntar fotos recientes del cliente para que la sugerencia
   // pueda analizarlas (nunca decir que "no puede ver imagenes").
-  var sugImageBlocks = buildImageBlocks(messages);
+  var sugImageBlocks = buildImageBlocks(messages, "sugerencia para " + contact.name);
   var sugContent = sugImageBlocks.length > 0
     ? sugImageBlocks.concat([{ type: "text", text: prompt + "\nEl cliente envio " + sugImageBlocks.length + " foto(s) adjunta(s): analizalas y usalas para la sugerencia (ej: si se ve el bano, identifica banera vs ducha y hueco frontal/esquinero)." }])
     : prompt;
@@ -487,6 +529,8 @@ async function generateAutoReply(contact, messages) {
   prompt += "- NUNCA inventes información técnica. Si no sabés, decile 'Lo consulto con el área técnica y le confirmo'.\n";
   prompt += "- NUNCA dar precios por mensaje. Siempre ofrecé armar un presupuesto formal.\n";
   prompt += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho o el alto?'\n";
+  prompt += "- LÍNEAS Y MARCAS: NUNCA afirmes que NO trabajamos una línea o producto salvo que el conocimiento lo indique explícitamente. Si mencionan una línea que no figura en el conocimiento, respondé 'Lo consulto con el área técnica y le confirmo'. NUNCA atribuyas una línea a otra marca (ej: Europa 60 y Novissima son de FLAMIA, no de REHAU).\n";
+  prompt += "- FORMATO: Texto plano de WhatsApp. NUNCA uses markdown ni dobles asteriscos (**palabra**). Si necesitás resaltar algo, usá un solo asterisco (*palabra*), que es la negrita de WhatsApp, o directamente no resaltes.\n";
   prompt += "- ENVÍO DE PLANOS/CROQUIS/FOTOS PARA COTIZAR: SIEMPRE sugerir PRIMERO que los envíe por este mismo chat de WhatsApp (es Ventas). Solo si insiste en correo, indicar ventas@aberturaswindows.com.ar. NUNCA dar el mail medicionesyservicios@ para envío de planos o cotizaciones (ese es solo para coordinar mediciones de obra y servicios post-venta).\n";
   prompt += "- BÚSQUEDAS LABORALES / CV: Si preguntan por trabajo o búsquedas laborales, invitá a adjuntar el CV por este mismo canal, o si prefiere por correo a msoriano@aberturaswindows.com.ar. Si adjunta un CV, agradecé e informá que lo estaremos analizando y que en caso de avanzar nos comunicaremos con usted. NO pidas datos de cotización, NO derives a ventas y NO prometas plazos de respuesta.\n";
   prompt += "- Respuestas breves: 2-3 oraciones máximo.\n";
@@ -514,7 +558,7 @@ async function generateAutoReply(contact, messages) {
   // VISION: si el cliente mando fotos recientes, se adjuntan para que Claudia
   // las analice de verdad (ej: foto del bano -> detectar banera vs ducha,
   // hueco frontal vs esquinero, y asesorar sin preguntar lo obvio).
-  var imageBlocks = buildImageBlocks(messages);
+  var imageBlocks = buildImageBlocks(messages, "auto-reply para " + contact.name);
   var userContent;
   if (imageBlocks.length > 0) {
     prompt += '\nEl cliente envio ' + imageBlocks.length + ' foto(s) adjunta(s) en esta conversacion. ANALIZALAS: si se ve el bano, identifica si tiene BANERA o DUCHA/receptaculo, si el hueco es frontal o esquinero, y usa esa informacion para asesorar directamente SIN preguntar lo que ya se ve en la foto. Si algo no se distingue con claridad, ahi si pregunta. Si la imagen es un CV (curriculum vitae), NO analices su contenido en la respuesta: solo agradece el envio e informa que lo estaremos analizando y que en caso de avanzar nos comunicaremos.\n';
