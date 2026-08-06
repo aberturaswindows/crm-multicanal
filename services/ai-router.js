@@ -100,6 +100,15 @@ var COMPANY_KNOWLEDGE = [
   "- Puertas automaticas: AUDOOR.",
   "- Toldos: IPROA.",
   "",
+  "PUERTAS PLEGADIZAS / PLEGABLES / TIPO FUELLE (MUY IMPORTANTE - PREGUNTAR ANTES DE NEGAR O CONFIRMAR):",
+  "- NO fabricamos puertas plegadizas chicas de interior tipo fuelle (las tipicas de aprox. 90 x 200 cm para placard, bano o paso interior).",
+  "- SI fabricamos cerramientos plegables para galerias, balcones o interiores amplios, con ancho MINIMO de 200 a 250 cm.",
+  "- Si el cliente menciona 'puerta plegadiza', 'plegable' o 'fuelle' SIN dar detalles de uso ni medidas, NO la niegues ni la confirmes de entrada: PRIMERO pregunta para que espacio la necesita y que medidas aproximadas tiene el vano. Ejemplo: 'Con gusto le comento. La puerta plegadiza que busca, seria para un interior chico como un placard o bano, o para cerrar una galeria, balcon o un ambiente amplio? Que medidas aproximadas tiene el vano?'",
+  "- Con la respuesta del cliente, deduci:",
+  "  * Interior chico tipo fuelle (placard, bano, paso interior, ancho menor a 200 cm, tipo 90 x 200): explica amablemente que ese tipo de puerta NO lo fabricamos, ya que trabajamos aberturas a medida de mayores dimensiones.",
+  "  * Galeria, balcon o ambiente amplio, con ancho de 200 cm o mas: SI es nuestro cerramiento plegable. Segui el flujo normal de cotizacion y pedi los datos.",
+  "- Si por el primer mensaje ya queda claro el uso o las medidas (ej: 'para el placard, de 90 de ancho'), no hace falta preguntar: responde directo segun las reglas anteriores.",
+  "",
   "LINEAS DE PERFILERIA POR MARCA (MUY IMPORTANTE - NO CONFUNDIR MARCAS):",
   "- FLAMIA S.A. (ALUMINIO). Las siguientes lineas son TODAS de FLAMIA, y SI las trabajamos:",
   "  * Europa 60",
@@ -179,6 +188,7 @@ var COMPANY_KNOWLEDGE = [
   "   - Si incluye o no instalacion",
   "   - Direccion de la obra (si requiere instalacion)",
   "   - Que producto quiere cotizar (tipo de abertura: corrediza, de abrir, etc.)",
+  "   - Material de las aberturas: ALUMINIO o PVC (si el cliente no lo aclaro, preguntarlo)",
   "   - Tiene plano de carpinterias (si o no)",
   "   - Color de la perfileria",
   "   - Tipo de vidrio: DVH (doble vidrio hermetico) o vidrio simple",
@@ -240,6 +250,7 @@ var QUOTE_DATA_FIELDS = [
   "si incluye o no instalacion",
   "direccion de la obra (si incluye instalacion)",
   "que producto quiere cotizar (tipo de abertura: corrediza, de abrir, etc.)",
+  "material de las aberturas: ALUMINIO o PVC (si el cliente no lo aclaro, preguntarlo)",
   "tiene plano de carpinterias (si o no)",
   "color de la perfileria",
   "tipo de vidrio (DVH o simple)",
@@ -400,6 +411,8 @@ async function generateSuggestion(contact, messages) {
   prompt += "- NUNCA inventes información técnica. Si no sabés, decile 'Lo consulto con el área técnica y le confirmo'.\n";
   prompt += "- NUNCA dar precios por mensaje. Siempre ofrecé armar un presupuesto formal.\n";
   prompt += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho o el alto?'\n";
+  prompt += "- MATERIAL: Si el cliente pide cotizar aberturas y no aclaró si las quiere de ALUMINIO o de PVC, preguntáselo como parte de los datos.\n";
+  prompt += "- PUERTAS PLEGADIZAS: Si mencionan una puerta plegadiza/plegable/fuelle sin detalles, primero preguntá el uso y las medidas del vano antes de negar o confirmar (ver conocimiento de la empresa).\n";
   prompt += "- LÍNEAS Y MARCAS: NUNCA afirmes que NO trabajamos una línea o producto salvo que el conocimiento lo indique explícitamente. Si mencionan una línea que no figura en el conocimiento, respondé 'Lo consulto con el área técnica y le confirmo'. NUNCA atribuyas una línea a otra marca (ej: Europa 60 y Novissima son de FLAMIA, no de REHAU).\n";
   prompt += "- FORMATO: Texto plano de WhatsApp. NUNCA uses markdown ni dobles asteriscos (**palabra**). Si necesitás resaltar algo, usá un solo asterisco (*palabra*), que es la negrita de WhatsApp, o directamente no resaltes.\n";
   prompt += "- Si el cliente pregunta por un producto, explicar brevemente y pedir los datos para cotizar.\n";
@@ -485,6 +498,8 @@ async function generateAutoReply(contact, messages) {
     stageInstructions += "- Respondé la consulta del cliente de forma natural.\n";
     stageInstructions += "- Si el cliente está interesado en cotizar, pedile TODOS los datos faltantes en UN SOLO mensaje, listados con viñetas de forma clara y ordenada. No fragmentes la solicitud de datos en varios mensajes.\n";
     stageInstructions += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho (medida horizontal) o el alto (medida vertical)?' Nunca asumas una convención.\n";
+    stageInstructions += "- MATERIAL: Si el cliente no aclaró si quiere las aberturas de ALUMINIO o de PVC, preguntáselo como parte de los datos. NO consideres los datos completos sin saber el material (salvo que sea un producto donde no aplica, ej: mamparas, deck, cortinas).\n";
+    stageInstructions += "- PUERTAS PLEGADIZAS: Si el cliente menciona una puerta plegadiza/plegable/fuelle sin dar detalles, PRIMERO preguntá para qué espacio la necesita y las medidas del vano, antes de negar o confirmar (ver conocimiento de la empresa).\n";
     stageInstructions += "- Si el cliente ya proporcionó TODOS los datos necesarios, confirmá que se va a preparar el presupuesto en hasta 72 hs hábiles.\n";
     stageInstructions += "- NO repitas datos que el cliente ya proporcionó en mensajes anteriores.\n";
     stageInstructions += "- Si el cliente consulta por servicio de carpintería/reparación, seguí el protocolo de servicio post-venta: verificar que sea obra nuestra, informar sobre visita técnica ($70.000 IVA inc.).\n";
@@ -529,6 +544,8 @@ async function generateAutoReply(contact, messages) {
   prompt += "- NUNCA inventes información técnica. Si no sabés, decile 'Lo consulto con el área técnica y le confirmo'.\n";
   prompt += "- NUNCA dar precios por mensaje. Siempre ofrecé armar un presupuesto formal.\n";
   prompt += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho o el alto?'\n";
+  prompt += "- MATERIAL: Si el cliente pide cotizar aberturas y no aclaró si las quiere de ALUMINIO o de PVC, preguntáselo como parte de los datos.\n";
+  prompt += "- PUERTAS PLEGADIZAS: Si mencionan una puerta plegadiza/plegable/fuelle sin detalles, primero preguntá el uso y las medidas del vano antes de negar o confirmar (ver conocimiento de la empresa).\n";
   prompt += "- LÍNEAS Y MARCAS: NUNCA afirmes que NO trabajamos una línea o producto salvo que el conocimiento lo indique explícitamente. Si mencionan una línea que no figura en el conocimiento, respondé 'Lo consulto con el área técnica y le confirmo'. NUNCA atribuyas una línea a otra marca (ej: Europa 60 y Novissima son de FLAMIA, no de REHAU).\n";
   prompt += "- FORMATO: Texto plano de WhatsApp. NUNCA uses markdown ni dobles asteriscos (**palabra**). Si necesitás resaltar algo, usá un solo asterisco (*palabra*), que es la negrita de WhatsApp, o directamente no resaltes.\n";
   prompt += "- ENVÍO DE PLANOS/CROQUIS/FOTOS PARA COTIZAR: SIEMPRE sugerir PRIMERO que los envíe por este mismo chat de WhatsApp (es Ventas). Solo si insiste en correo, indicar ventas@aberturaswindows.com.ar. NUNCA dar el mail medicionesyservicios@ para envío de planos o cotizaciones (ese es solo para coordinar mediciones de obra y servicios post-venta).\n";
@@ -551,8 +568,8 @@ async function generateAutoReply(contact, messages) {
   prompt += '\nNOTA: Si la conversacion es una consulta LABORAL (busqueda de trabajo / envio de CV), usa siempre "continuar" y deja resumen como null.\n';
   prompt += '\nIMPORTANTE - FICHA RESUMEN:\n';
   prompt += 'Cuando stage_assessment sea "datos_completos", DEBES incluir el campo "resumen" con los datos recopilados, con cada abertura como objeto separado y medidas en CENTÍMETROS como enteros:\n';
-  prompt += '{"reply":"tu respuesta","stage_assessment":"datos_completos","resumen":{"nombre":"nombre y apellido","telefono":"numero o No indicado","instalacion":"Si/No","direccion":"direccion de la obra o No requiere instalacion","tiene_plano":"Si/No","color":"color elegido o No indicado","vidrio":"DVH o Simple o No indicado","aberturas":[{"tipo":"corrediza/de abrir/mampara/etc","modelo":"solo para mamparas: nombre del modelo Glassic (ej Box Frontal, Open Pivot, Blindex) o null","cristal":"solo para mamparas: incoloro/color/textura/saten o null","ancho_cm":120,"alto_cm":80,"cantidad":1}],"gran_mendoza":"Si/No/No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)","notas":"datos adicionales o vacio"}}\n';
-  prompt += 'REGLAS para aberturas: ancho_cm y alto_cm son INTEGER en centímetros (si el cliente dijo 1.20m, convertí a 120). Si no se sabe un valor, usá null. Si no se indicaron medidas, aberturas es [].\n';
+  prompt += '{"reply":"tu respuesta","stage_assessment":"datos_completos","resumen":{"nombre":"nombre y apellido","telefono":"numero o No indicado","instalacion":"Si/No","direccion":"direccion de la obra o No requiere instalacion","material":"Aluminio o PVC o No indicado (material de las aberturas; si el pedido no lleva perfileria, ej mamparas o deck, usa No aplica)","tiene_plano":"Si/No","color":"color elegido o No indicado","vidrio":"DVH o Simple o No indicado","aberturas":[{"tipo":"corrediza/de abrir/mampara/etc","material":"Aluminio/PVC/No aplica","modelo":"solo para mamparas: nombre del modelo Glassic (ej Box Frontal, Open Pivot, Blindex) o null","cristal":"solo para mamparas: incoloro/color/textura/saten o null","ancho_cm":120,"alto_cm":80,"cantidad":1}],"gran_mendoza":"Si/No/No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)","notas":"datos adicionales o vacio"}}\n';
+  prompt += 'REGLAS para aberturas: ancho_cm y alto_cm son INTEGER en centímetros (si el cliente dijo 1.20m, convertí a 120). Si no se sabe un valor, usá null. Si no se indicaron medidas, aberturas es []. El campo material DEBE especificar si las aberturas son de Aluminio o de PVC, tanto a nivel general como en cada abertura (si el cliente pidio materiales distintos para distintas aberturas, indicalo en cada una).\n';
   prompt += 'Si stage_assessment NO es "datos_completos", deja resumen como null.\n';
 
   // VISION: si el cliente mando fotos recientes, se adjuntan para que Claudia
@@ -679,6 +696,7 @@ async function generateFicha(contact, messages) {
   prompt += "- telefono: numero de telefono (si no aparece, poner 'No indicado')\n";
   prompt += "- direccion: direccion de la obra (si no requiere instalacion, poner 'No requiere instalacion')\n";
   prompt += "- producto: que producto quiere cotizar (tipo de abertura, cantidades, etc.)\n";
+  prompt += "- material: Aluminio / PVC / No indicado (material de las aberturas; si el cliente pidio materiales distintos, detallalo, ej 'Aluminio (ventanas) y PVC (puerta)'; si el pedido no lleva perfileria, ej mamparas o deck, poner 'No aplica')\n";
   prompt += "- plano: Si / No / No indicado\n";
   prompt += "- color: color de la perfileria elegido (si no lo dijo, 'No indicado')\n";
   prompt += "- vidrio: DVH / Simple / No indicado\n";
@@ -687,7 +705,7 @@ async function generateFicha(contact, messages) {
   prompt += "- gran_mendoza: Si / No / No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)\n";
   prompt += "- mamparas: SOLO si el cliente pidio mamparas de bano, un array con cada mampara: modelo Glassic (ej Box Frontal, Blindex, Panel, Open Pivot), cristal (incoloro/color/textura/saten), ancho_cm y alto_cm como INTEGER en centimetros, y cantidad. Si no hay mamparas, array vacio [].\n\n";
   prompt += "Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato EXACTO:\n";
-  prompt += '{"nombre":"...","telefono":"...","direccion":"...","producto":"...","plano":"...","color":"...","vidrio":"...","medidas":"...","instalacion":"...","gran_mendoza":"...","mamparas":[{"modelo":"Box Frontal","cristal":"incoloro","ancho_cm":180,"alto_cm":160,"cantidad":1}]}\n';
+  prompt += '{"nombre":"...","telefono":"...","direccion":"...","producto":"...","material":"...","plano":"...","color":"...","vidrio":"...","medidas":"...","instalacion":"...","gran_mendoza":"...","mamparas":[{"modelo":"Box Frontal","cristal":"incoloro","ancho_cm":180,"alto_cm":160,"cantidad":1}]}\n';
   prompt += "Si algun dato no fue mencionado en la conversacion, usa 'No indicado' (o 'No indicada' para direccion/medidas).";
 
   try {
@@ -723,7 +741,7 @@ async function detectLostReason(messageText) {
 function classifyByKeywords(text) {
   var lower = text.toLowerCase();
   var rules = {
-    ventas: ["precio", "cotizacion", "presupuesto", "comprar", "costo", "descuento", "oferta", "contratar", "producto", "catalogo", "promocion", "cuanto sale", "interesado", "abertura", "ventana", "puerta", "aluminio", "pvc", "dvh", "vidrio", "corrediza", "mampara", "persiana", "mosquitero", "porton", "baranda", "toldo", "cortina", "revestimiento", "siding", "deck", "piso", "spc", "wpc", "parasol", "cerco", "griferia", "canadian"],
+    ventas: ["precio", "cotizacion", "presupuesto", "comprar", "costo", "descuento", "oferta", "contratar", "producto", "catalogo", "promocion", "cuanto sale", "interesado", "abertura", "ventana", "puerta", "aluminio", "pvc", "dvh", "vidrio", "corrediza", "plegadiza", "plegable", "fuelle", "cerramiento", "mampara", "persiana", "mosquitero", "porton", "baranda", "toldo", "cortina", "revestimiento", "siding", "deck", "piso", "spc", "wpc", "parasol", "cerco", "griferia", "canadian"],
     soporte: ["no funciona", "error", "problema", "tecnico", "falla", "ayuda", "configurar", "instalar", "medicion", "colocacion", "fabricacion", "cuando esta", "estado", "pedido", "entrega", "servicio", "reparacion", "carpinteria", "visita tecnica"],
     admin: ["factura", "pago", "cobro", "recibo", "cuit", "datos fiscales", "transferencia", "suscripcion", "vencimiento", "comprobante"],
     reclamos: ["reclamo", "queja", "insatisfecho", "mal servicio", "devolver", "reembolso", "devolucion", "pesimo", "inaceptable", "denuncia", "enojado"]
