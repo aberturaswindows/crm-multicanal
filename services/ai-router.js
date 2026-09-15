@@ -213,6 +213,19 @@ var COMPANY_KNOWLEDGE = [
   "- Para puertas ventanas corredizas con riel inferior embutido: dejar sin colocar la ultima hilera de ceramico frente a la abertura.",
   "- Contacto del area de Mediciones y Servicios Tecnicos (SOLO para coordinar mediciones de obra y servicios post-venta, NO para cotizaciones): 261-526-3244 o medicionesyservicios@aberturaswindows.com.ar",
   "",
+  "ALCANCE DE LA INSTALACION / RETIRO DE ABERTURAS EXISTENTES / ALBANILERIA (MUY IMPORTANTE):",
+  "- NO realizamos trabajos de albanileria de ningun tipo: romper o picar muros, amurar, revocar, enlucir, reparar mamposteria, recuadrar vanos, colocar ceramicos, etc. Esos trabajos los debe resolver el cliente con un albanil.",
+  "- El retiro o desmonte de aberturas existentes (de madera, hierro, aluminio o cualquier material) NO esta incluido en el servicio de instalacion.",
+  "- Si el cliente necesita retirar una abertura existente, se evalua caso por caso y, si corresponde, se cotiza APARTE segun la mano de obra que implique el trabajo.",
+  "- Si para retirar la abertura existente hace falta albanileria (por ejemplo marcos amurados), esa parte NO la hacemos: la tiene que resolver el cliente con un albanil antes de la medicion final.",
+  "- NUNCA digas que 'retiramos la abertura existente', que 'el retiro esta incluido' ni que 'no hay problema, nos encargamos'.",
+  "- Respuesta modelo: 'Le comento que el retiro de la abertura existente no esta incluido en la instalacion. Si hace falta desmontarla, lo evaluamos y se cotiza aparte segun el trabajo que implique. Tenga en cuenta que no realizamos trabajos de albanileria, asi que si hay que romper o reparar muro, eso lo tendria que resolver con un albanil.'",
+  "- Si el cliente pide que el retiro se incluya en el presupuesto, anotalo en las notas para que el asesor lo evalue, sin prometer que se va a hacer ni dar un costo.",
+  "",
+  "REGLA GENERAL SOBRE LO QUE INCLUYE CADA SERVICIO:",
+  "- NUNCA afirmes que un trabajo, tarea o servicio esta INCLUIDO (en la instalacion, en el presupuesto o en cualquier servicio) salvo que este conocimiento lo diga explicitamente.",
+  "- Ante cualquier consulta sobre el alcance de un trabajo que no figure aca (retiros, desmontes, terminaciones, sellados especiales, trabajos en altura, andamios, flete especial, obras complementarias, etc.), NO lo confirmes ni lo niegues: responde 'Lo consulto con el area tecnica y le confirmo'.",
+  "",
   "SERVICIO POST-VENTA / SERVICIO DE CARPINTERIA:",
   "- SOLO hacemos servicio en aberturas fabricadas e instaladas por nosotros.",
   "- Si alguien solicita servicio de carpinteria, PRIMERO verificar que la obra sea nuestra:",
@@ -414,6 +427,8 @@ async function generateSuggestion(contact, messages) {
   prompt += "- MATERIAL: Si el cliente pide cotizar aberturas y no aclaró si las quiere de ALUMINIO o de PVC, preguntáselo como parte de los datos.\n";
   prompt += "- PUERTAS PLEGADIZAS: Si mencionan una puerta plegadiza/plegable/fuelle sin detalles, primero preguntá el uso y las medidas del vano antes de negar o confirmar (ver conocimiento de la empresa).\n";
   prompt += "- LÍNEAS Y MARCAS: NUNCA afirmes que NO trabajamos una línea o producto salvo que el conocimiento lo indique explícitamente. Si mencionan una línea que no figura en el conocimiento, respondé 'Lo consulto con el área técnica y le confirmo'. NUNCA atribuyas una línea a otra marca (ej: Europa 60 y Novissima son de FLAMIA, no de REHAU).\n";
+  prompt += "- RETIRO DE ABERTURAS EXISTENTES Y ALBAÑILERÍA: NO hacemos albañilería. El retiro/desmonte de la abertura existente NO está incluido en la instalación: se evalúa y se cotiza aparte según la mano de obra. Si requiere romper o reparar muro, lo resuelve el cliente con un albañil. NUNCA digas que 'retiramos la abertura existente' ni que está incluido.\n";
+  prompt += "- ALCANCE DE SERVICIOS: NUNCA afirmes que un trabajo está incluido en la instalación o en el presupuesto si no figura explícitamente en el conocimiento. Ante la duda, respondé 'Lo consulto con el área técnica y le confirmo'.\n";
   prompt += "- FORMATO: Texto plano de WhatsApp. NUNCA uses markdown ni dobles asteriscos (**palabra**). Si necesitás resaltar algo, usá un solo asterisco (*palabra*), que es la negrita de WhatsApp, o directamente no resaltes.\n";
   prompt += "- Si el cliente pregunta por un producto, explicar brevemente y pedir los datos para cotizar.\n";
   prompt += "- Si el cliente ya dio los datos para cotizar, confirmar que se va a preparar el presupuesto en hasta 72 hs hábiles.\n";
@@ -500,6 +515,7 @@ async function generateAutoReply(contact, messages) {
     stageInstructions += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho (medida horizontal) o el alto (medida vertical)?' Nunca asumas una convención.\n";
     stageInstructions += "- MATERIAL: Si el cliente no aclaró si quiere las aberturas de ALUMINIO o de PVC, preguntáselo como parte de los datos. NO consideres los datos completos sin saber el material (salvo que sea un producto donde no aplica, ej: mamparas, deck, cortinas).\n";
     stageInstructions += "- PUERTAS PLEGADIZAS: Si el cliente menciona una puerta plegadiza/plegable/fuelle sin dar detalles, PRIMERO preguntá para qué espacio la necesita y las medidas del vano, antes de negar o confirmar (ver conocimiento de la empresa).\n";
+    stageInstructions += "- RETIRO DE ABERTURA EXISTENTE: Si el cliente menciona que tiene una abertura vieja/existente para sacar, aclarale que el retiro NO está incluido en la instalación, que se evalúa y se cotiza aparte según la mano de obra, y que no hacemos albañilería. Anotalo en las notas del resumen. No lo trates como un dato obligatorio para cotizar.\n";
     stageInstructions += "- Si el cliente ya proporcionó TODOS los datos necesarios, confirmá que se va a preparar el presupuesto en hasta 72 hs hábiles.\n";
     stageInstructions += "- NO repitas datos que el cliente ya proporcionó en mensajes anteriores.\n";
     stageInstructions += "- Si el cliente consulta por servicio de carpintería/reparación, seguí el protocolo de servicio post-venta: verificar que sea obra nuestra, informar sobre visita técnica ($70.000 IVA inc.).\n";
@@ -547,6 +563,8 @@ async function generateAutoReply(contact, messages) {
   prompt += "- MATERIAL: Si el cliente pide cotizar aberturas y no aclaró si las quiere de ALUMINIO o de PVC, preguntáselo como parte de los datos.\n";
   prompt += "- PUERTAS PLEGADIZAS: Si mencionan una puerta plegadiza/plegable/fuelle sin detalles, primero preguntá el uso y las medidas del vano antes de negar o confirmar (ver conocimiento de la empresa).\n";
   prompt += "- LÍNEAS Y MARCAS: NUNCA afirmes que NO trabajamos una línea o producto salvo que el conocimiento lo indique explícitamente. Si mencionan una línea que no figura en el conocimiento, respondé 'Lo consulto con el área técnica y le confirmo'. NUNCA atribuyas una línea a otra marca (ej: Europa 60 y Novissima son de FLAMIA, no de REHAU).\n";
+  prompt += "- RETIRO DE ABERTURAS EXISTENTES Y ALBAÑILERÍA: NO hacemos albañilería. El retiro/desmonte de la abertura existente NO está incluido en la instalación: se evalúa y se cotiza aparte según la mano de obra. Si requiere romper o reparar muro, lo resuelve el cliente con un albañil. NUNCA digas que 'retiramos la abertura existente' ni que está incluido.\n";
+  prompt += "- ALCANCE DE SERVICIOS: NUNCA afirmes que un trabajo está incluido en la instalación o en el presupuesto si no figura explícitamente en el conocimiento. Ante la duda, respondé 'Lo consulto con el área técnica y le confirmo'.\n";
   prompt += "- FORMATO: Texto plano de WhatsApp. NUNCA uses markdown ni dobles asteriscos (**palabra**). Si necesitás resaltar algo, usá un solo asterisco (*palabra*), que es la negrita de WhatsApp, o directamente no resaltes.\n";
   prompt += "- ENVÍO DE PLANOS/CROQUIS/FOTOS PARA COTIZAR: SIEMPRE sugerir PRIMERO que los envíe por este mismo chat de WhatsApp (es Ventas). Solo si insiste en correo, indicar ventas@aberturaswindows.com.ar. NUNCA dar el mail medicionesyservicios@ para envío de planos o cotizaciones (ese es solo para coordinar mediciones de obra y servicios post-venta).\n";
   prompt += "- BÚSQUEDAS LABORALES / CV: Si preguntan por trabajo o búsquedas laborales, invitá a adjuntar el CV por este mismo canal, o si prefiere por correo a msoriano@aberturaswindows.com.ar. Si adjunta un CV, agradecé e informá que lo estaremos analizando y que en caso de avanzar nos comunicaremos con usted. NO pidas datos de cotización, NO derives a ventas y NO prometas plazos de respuesta.\n";
@@ -568,7 +586,7 @@ async function generateAutoReply(contact, messages) {
   prompt += '\nNOTA: Si la conversacion es una consulta LABORAL (busqueda de trabajo / envio de CV), usa siempre "continuar" y deja resumen como null.\n';
   prompt += '\nIMPORTANTE - FICHA RESUMEN:\n';
   prompt += 'Cuando stage_assessment sea "datos_completos", DEBES incluir el campo "resumen" con los datos recopilados, con cada abertura como objeto separado y medidas en CENTÍMETROS como enteros:\n';
-  prompt += '{"reply":"tu respuesta","stage_assessment":"datos_completos","resumen":{"nombre":"nombre y apellido","telefono":"numero o No indicado","instalacion":"Si/No","direccion":"direccion de la obra o No requiere instalacion","material":"Aluminio o PVC o No indicado (material de las aberturas; si el pedido no lleva perfileria, ej mamparas o deck, usa No aplica)","tiene_plano":"Si/No","color":"color elegido o No indicado","vidrio":"DVH o Simple o No indicado","aberturas":[{"tipo":"corrediza/de abrir/mampara/etc","material":"Aluminio/PVC/No aplica","modelo":"solo para mamparas: nombre del modelo Glassic (ej Box Frontal, Open Pivot, Blindex) o null","cristal":"solo para mamparas: incoloro/color/textura/saten o null","ancho_cm":120,"alto_cm":80,"cantidad":1}],"gran_mendoza":"Si/No/No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)","notas":"datos adicionales o vacio"}}\n';
+  prompt += '{"reply":"tu respuesta","stage_assessment":"datos_completos","resumen":{"nombre":"nombre y apellido","telefono":"numero o No indicado","instalacion":"Si/No","direccion":"direccion de la obra o No requiere instalacion","material":"Aluminio o PVC o No indicado (material de las aberturas; si el pedido no lleva perfileria, ej mamparas o deck, usa No aplica)","tiene_plano":"Si/No","color":"color elegido o No indicado","vidrio":"DVH o Simple o No indicado","aberturas":[{"tipo":"corrediza/de abrir/mampara/etc","material":"Aluminio/PVC/No aplica","modelo":"solo para mamparas: nombre del modelo Glassic (ej Box Frontal, Open Pivot, Blindex) o null","cristal":"solo para mamparas: incoloro/color/textura/saten o null","ancho_cm":120,"alto_cm":80,"cantidad":1}],"gran_mendoza":"Si/No/No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)","notas":"datos adicionales o vacio (si el cliente tiene una abertura existente para retirar, indicalo aca, ej: Tiene ventana de madera existente para retirar - evaluar y cotizar desmonte aparte)"}}\n';
   prompt += 'REGLAS para aberturas: ancho_cm y alto_cm son INTEGER en centímetros (si el cliente dijo 1.20m, convertí a 120). Si no se sabe un valor, usá null. Si no se indicaron medidas, aberturas es []. El campo material DEBE especificar si las aberturas son de Aluminio o de PVC, tanto a nivel general como en cada abertura (si el cliente pidio materiales distintos para distintas aberturas, indicalo en cada una).\n';
   prompt += 'Si stage_assessment NO es "datos_completos", deja resumen como null.\n';
 
@@ -645,7 +663,7 @@ async function generateFollowup(contact, messages) {
   prompt += "Este es el seguimiento numero " + followupNum + " de 5.\n\n";
   prompt += "Historial reciente:\n" + history + "\n\n";
   prompt += "REGLAS:\n";
-  prompt += "- Tono: formal pero relajado, profesional, amable. Tutear.\n";
+  prompt += "- Tono: formal pero relajado, profesional, amable. Trato SIEMPRE de USTED, nunca tutear.\n";
   prompt += "- Mensaje breve de seguimiento (2-3 oraciones).\n";
   prompt += "- NO seas insistente ni presiones.\n";
   prompt += "- NO repitas 'Perfecto' ni 'Excelente'.\n";
