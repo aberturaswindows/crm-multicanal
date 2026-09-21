@@ -877,10 +877,12 @@ router.get("/contacts/:id/messages", function(req, res) {
   // en el CRM sin que el frontend tenga que buscarlo aparte.
   var messages = db.prepare(
     "SELECT m.*, " +
+    "  q.id AS reply_message_id, " +
     "  q.content AS reply_content, " +
     "  q.direction AS reply_direction, " +
     "  q.agent_name AS reply_agent_name, " +
     "  q.media_type AS reply_media_type, " +
+    "  q.media_url AS reply_media_url, " +
     "  q.original_filename AS reply_original_filename " +
     "FROM messages m " +
     "LEFT JOIN messages q ON q.channel_message_id = m.reply_to_message_id AND q.contact_id = m.contact_id " +
