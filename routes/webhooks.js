@@ -312,7 +312,7 @@ async function handleAutoReply(contact, channel) {
                     });
                     var cotTexto = mamparas.formatearCotizacion(cot);
                     if (gm === null && cot.ok) {
-                      cotTexto += "\n\u26A0 No quedo claro si la obra esta dentro del Gran Mendoza: confirmar antes de enviar (dentro suma " + "$299.700 + IVA de medicion/flete/instalacion).";
+                      cotTexto += mamparas.avisoZonaSinConfirmar(cot);
                     }
                     if (ab.cantidad > 1 && cot.ok) {
                       cotTexto += "\n\u{1F522} Cantidad solicitada: " + ab.cantidad + " unidades (el precio es POR UNIDAD).";
