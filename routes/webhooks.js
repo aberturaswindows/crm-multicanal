@@ -205,6 +205,52 @@ function handleStatusUpdate(statusEvent) {
   }
 }
 
+// MODO PRUEBA mamparas: calcula y envia al cliente la cotizacion pedida por Claudia.
+// Deja ademas la cotizacion interna (detallada) como mensaje de sistema para el vendedor.
+async function enviarCotizacionesMamparas(db, contact, channel, pedido) {
+  var gmTxt = String(pedido.gran_mendoza || "").toLowerCase();
+  var gm = (gmTxt.indexOf("si") === 0 || gmTxt.indexOf("sí") === 0) ? true : (gmTxt.indexOf("no") === 0 ? false : null);
+  var textos = [];
+  var pendientes = 0;
+  for (var i = 0; i < pedido.items.length; i++) {
+    var it = pedido.items[i] || {};
+    var cot = mamparas.cotizarMampara({ modelo: it.modelo, ancho_cm: it.ancho_cm, alto_cm: it.alto_cm, cristal: it.cristal, gran_mendoza: gm });
+    var interno = mamparas.formatearCotizacion(cot);
+    if (cot.ok && gm !== null) {
+      textos.push(mamparas.formatearCotizacionCliente(cot, it.cantidad || 1));
+      interno += "\n\u{1F9EA} MODO PRUEBA: esta cotizacion se envio automaticamente al cliente.";
+    } else {
+      pendientes++;
+      if (cot.ok && gm === null) interno += mamparas.avisoZonaSinConfirmar(cot);
+      interno += "\n\u{1F9EA} MODO PRUEBA: NO se envio al cliente (falta dato o requiere asesor). Cotizar manualmente.";
+    }
+    if (it.cantidad > 1 && cot.ok) interno += "\n\u{1F522} Cantidad solicitada: " + it.cantidad + " unidades (el precio es POR UNIDAD).";
+    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, interno, channel);
+    console.log("[MAMPARAS] MODO PRUEBA: " + (it.modelo || "?") + " " + it.ancho_cm + "x" + it.alto_cm + " -> " + (cot.ok ? "OK" : cot.error));
+  }
+  if (pendientes > 0) {
+    textos.push(textos.length > 0
+      ? "La otra mampara la revisa un asesor y le envia la cotizacion a la brevedad."
+      : "Un asesor revisa los datos de su mampara y le envia la cotizacion a la brevedad.");
+  }
+  for (var q = 0; q < textos.length; q++) {
+    // No reenviar exactamente la misma cotizacion si ya se le mando antes a este contacto
+    var yaEnviada = db.prepare("SELECT id FROM messages WHERE contact_id = ? AND direction = 'outgoing' AND content = ? AND status != 'failed' LIMIT 1").get(contact.id, textos[q]);
+    if (yaEnviada && textos[q].indexOf("*Cotizacion") === 0) {
+      console.log("[MAMPARAS] MODO PRUEBA: cotizacion identica ya enviada a " + contact.name + ", no se repite.");
+      continue;
+    }
+    var qIns = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, 'Claudia', 'pending')").run(contact.id, textos[q], channel);
+    var qRes = await sendChannelMessage(channel, contact.channel_id, contact.phone_line, contact.email, textos[q]);
+    if (qRes.success) {
+      db.prepare("UPDATE messages SET status='sent', sent_at=CURRENT_TIMESTAMP, channel_message_id=? WHERE id=?").run(qRes.messageId || null, qIns.lastInsertRowid);
+    } else {
+      db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(qRes.error || 'Unknown error', qIns.lastInsertRowid);
+    }
+    console.log("[MAMPARAS] MODO PRUEBA: mensaje de cotizacion a " + contact.name + " | Enviado: " + qRes.success);
+  }
+}
+
 async function handleAutoReply(contact, channel) {
   try {
     var db = getDb();
@@ -213,8 +259,6 @@ async function handleAutoReply(contact, channel) {
     if (process.env.MAMPARAS_COTIZACION_DIRECTA) {
       console.log("[MAMPARAS] Modo prueba " + (cotizacionDirecta ? "ACTIVO" : "inactivo") + " para " + contact.name + " (" + contact.channel_id + ")");
     }
-    var cotizacionesCliente = [];
-    var mamparasEnFicha = 0;
     var messages = db.prepare("SELECT direction, content, media_type, media_url FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(contact.id);
     var result = await generateAutoReply(contact, messages);
 
@@ -310,7 +354,6 @@ async function handleAutoReply(contact, channel) {
                 for (var mi = 0; mi < r.aberturas.length; mi++) {
                   var ab = r.aberturas[mi];
                   var esMampara = (ab.tipo && String(ab.tipo).toLowerCase().indexOf("mampara") !== -1) || ab.modelo;
-                  if (esMampara) mamparasEnFicha++;
                   if (esMampara && ab.modelo && ab.cristal && ab.ancho_cm && ab.alto_cm) {
                     var cot = mamparas.cotizarMampara({
                       modelo: ab.modelo,
@@ -325,11 +368,6 @@ async function handleAutoReply(contact, channel) {
                     }
                     if (ab.cantidad > 1 && cot.ok) {
                       cotTexto += "\n\u{1F522} Cantidad solicitada: " + ab.cantidad + " unidades (el precio es POR UNIDAD).";
-                    }
-                    // MODO PRUEBA: solo si se pudo calcular y la zona esta definida (Si/No)
-                    if (cotizacionDirecta && cot.ok && gm !== null) {
-                      cotizacionesCliente.push(mamparas.formatearCotizacionCliente(cot, ab.cantidad || 1));
-                      cotTexto += "\n\u{1F9EA} MODO PRUEBA: esta cotizacion se envio automaticamente al cliente.";
                     }
                     db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, cotTexto, channel);
                     console.log("[MAMPARAS] Cotizacion " + (cot.ok ? "calculada" : "fallida") + " para " + contact.name + ": " + (cot.ok ? cot.modelo + " " + cot.medidaCotizada : cot.error));
@@ -365,29 +403,14 @@ async function handleAutoReply(contact, channel) {
     }
     console.log("[CLAUDIA] " + channel.toUpperCase() + " -> " + contact.name + ": " + result.reply.substring(0, 60) + "... | Enviado: " + sendResult.success);
 
-    // MODO PRUEBA mamparas: enviar la(s) cotizacion(es) calculadas por el sistema.
-    // Si habia mamparas pero no se pudo cotizar ninguna (zona sin definir, medida fuera
-    // de rango, modelo no reconocido), avisamos que un asesor la envia.
-    if (cotizacionDirecta && sendResult.success && mamparasEnFicha > 0) {
-      var textosCliente = cotizacionesCliente.slice();
-      if (cotizacionesCliente.length === 0) {
-        textosCliente.push("Un asesor revisa los datos de su mampara y le envia la cotizacion a la brevedad.");
-      } else if (cotizacionesCliente.length < mamparasEnFicha) {
-        textosCliente.push("La otra mampara (a medida) la revisa un asesor y le envia la cotizacion a la brevedad.");
-      }
-      for (var qi = 0; qi < textosCliente.length; qi++) {
-        try {
-          var qIns = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, 'Claudia', 'pending')").run(contact.id, textosCliente[qi], channel);
-          var qRes = await sendChannelMessage(channel, contact.channel_id, contact.phone_line, contact.email, textosCliente[qi]);
-          if (qRes.success) {
-            db.prepare("UPDATE messages SET status='sent', sent_at=CURRENT_TIMESTAMP, channel_message_id=? WHERE id=?").run(qRes.messageId || null, qIns.lastInsertRowid);
-          } else {
-            db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(qRes.error || 'Unknown error', qIns.lastInsertRowid);
-          }
-          console.log("[MAMPARAS] MODO PRUEBA: cotizacion enviada a " + contact.name + " | Enviado: " + qRes.success);
-        } catch (qErr) {
-          console.error("[MAMPARAS] MODO PRUEBA: error enviando cotizacion:", qErr.message);
-        }
+    // MODO PRUEBA mamparas: si Claudia completo cotizar_mamparas (en cualquier etapa),
+    // el sistema calcula cada mampara con la lista y envia la cotizacion al cliente.
+    // Lo que no se puede calcular (modelo a medida, medida inexistente) va al asesor.
+    if (cotizacionDirecta && sendResult.success && result.cotizarMamparas) {
+      try {
+        await enviarCotizacionesMamparas(db, contact, channel, result.cotizarMamparas);
+      } catch (qErr) {
+        console.error("[MAMPARAS] MODO PRUEBA: error enviando cotizacion:", qErr.message);
       }
     }
 
