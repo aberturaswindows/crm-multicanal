@@ -334,7 +334,15 @@ function cotizarMampara(params) {
     var rangosTxt = serie.items.map(function(it3) {
       return (serie.medida === "estandar" ? it3.ancho : (it3.anchoMin + " a " + it3.anchoMax)) + " x " + it3.alto;
     }).join(", ");
-    return { ok: false, error: "La medida " + ancho + "x" + alto + " cm esta fuera de rango para " + serie.nombre + ". Medidas disponibles (cm): " + rangosTxt + ". Medidas especiales: consultar con el area tecnica." };
+    var sugerencia = "";
+    if (serie.medida === "estandar") {
+      sugerencia = " Ofrecer al cliente la medida estandar mas cercana";
+      if (esPanelFijo(serie)) sugerencia += " o una " + MAMPARA_FIJA_A_MEDIDA + " a medida, que cotiza el asesor";
+      sugerencia += ".";
+    } else {
+      sugerencia = " Medidas especiales: consultar con el area tecnica.";
+    }
+    return { ok: false, error: "La medida " + ancho + "x" + alto + " cm no esta disponible para " + serie.nombre + ". Medidas disponibles (cm): " + rangosTxt + "." + sugerencia };
   }
 
   var precio = item.precios[cristal];
@@ -419,6 +427,20 @@ function formatearCotizacion(c) {
 }
 
 // Guia de asesoramiento para Claudia (sin precios)
+// Alternativa a medida para paneles fijos cuando la medida estandar no sirve (la cotiza el asesor).
+var MAMPARA_FIJA_A_MEDIDA = "mampara fija con perfil U 15x40 y cristal laminado 5+5 mm";
+
+function esPanelFijo(serie) { return String(serie.apertura || "").indexOf("panel fijo") === 0; }
+
+// Lista de modelos de medida estandar con sus medidas (se arma desde SERIES).
+function textoMedidasEstandar() {
+  return SERIES.filter(function(s) { return s.medida === "estandar"; }).map(function(s) {
+    var medidas = s.items.map(function(it) { return it.ancho + "x" + it.alto; });
+    medidas = medidas.filter(function(m, i) { return medidas.indexOf(m) === i; });
+    return s.nombre + " (" + medidas.join(" / ") + ")";
+  }).join("; ");
+}
+
 var MAMPARAS_GUIA = [
   "GUIA DE MAMPARAS DE BANO GLASSIC (asesoramiento - NUNCA dar precios por chat):",
   "- PANEL (linea 1000): pano fijo de cierre parcial, sin puertas. Economico, moderno, sensacion de amplitud. Medidas estandar 80cm ancho.",
@@ -435,6 +457,11 @@ var MAMPARAS_GUIA = [
   "PERFILES: aluminio anodizado o pintado segun linea: Plata, Acero mate, Negro, Blanco, Oro (segun modelo).",
   "PREGUNTAS PARA ASESORAR: 1) Es para banera o ducha/receptaculo? 2) Frontal, esquinero (dos vidrios en L) o angular? 3) Prefiere corrediza, batiente o solo pano fijo? 4) Que medidas tiene el hueco (ancho x alto en cm)? 5) Que cristal prefiere? 6) La obra esta dentro del Gran Mendoza (Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu, Lujan de Cuyo)?",
   "RECOMENDACIONES RAPIDAS: banera -> Rebatible Pivot o Rebatible Bolt. Ducha clasica -> Box corrediza o Blindex. Espacio chico -> Open Pivot Plegadiza. Premium/moderno -> Steel One, Meka o Espacio.",
+  "MODELOS DE MEDIDA ESTANDAR (ancho x alto en cm, NO se fabrican en otras medidas): " + textoMedidasEstandar() + ".",
+  "SI EL CLIENTE PIDE UN MODELO ESTANDAR EN UNA MEDIDA QUE NO EXISTE (ej: Panel de 85 cm, que viene solo en 80): NO lo cotices con su medida. Explicale que ese modelo viene en medida estandar y ofrecele DOS opciones: (1) el mismo modelo en la medida estandar mas cercana (ej: Panel de 80 cm), o (2) si es un panel/mampara FIJA, una " + MAMPARA_FIJA_A_MEDIDA + " fabricada a su medida, que la cotiza un asesor. Si es otro modelo estandar (rebatible, etc.), la opcion 2 es consultar medidas especiales con un asesor.",
+  "- Si elige la opcion 1: anota el modelo con la MEDIDA ESTANDAR (ej: Panel, ancho_cm 80) y segui normalmente.",
+  "- Si elige la opcion 2: en resumen.aberturas anota tipo 'Mampara fija a medida (perfil U 15x40, cristal laminado 5+5)', modelo null, y sus medidas reales (ej: 85 x 200). La cotiza el asesor; vos no prometas precio ni plazo distinto al habitual.",
+  "- Mientras el cliente no elija, NO marques datos_completos.",
   "Para cotizar una mampara necesitas: modelo, ancho y alto en cm, cristal, y si esta dentro del Gran Mendoza. El PRECIO lo calcula el sistema y lo aprueba un asesor: vos NUNCA lo decis en el chat."
 ].join("\n");
 
@@ -448,20 +475,32 @@ var MAMPARAS_GUIA = [
 // ------------------------------------------------------------
 function soloDigitos(x) { return String(x || "").replace(/\D/g, ""); }
 
+// Normaliza un celular argentino a 10 digitos (codigo de area + numero), sin 54, 9, 0 ni 15.
+// Acepta: "2614445566", "261 444 5566", "+54 9 261 444-5566", "0261 15 444-5566", "5492614445566".
+function normalizarCelularAR(x) {
+  var d = soloDigitos(x);
+  if (d.indexOf("549") === 0 && d.length >= 12) d = d.slice(3);
+  else if (d.indexOf("54") === 0 && d.length >= 12) d = d.slice(2);
+  if (d.charAt(0) === "0") d = d.slice(1);
+  if (d.length === 12) {
+    // Sacar el "15" despues del codigo de area (2, 3 o 4 digitos)
+    for (var a = 2; a <= 4; a++) {
+      if (d.substr(a, 2) === "15") { d = d.slice(0, a) + d.slice(a + 2); break; }
+    }
+  }
+  return d.slice(-10);
+}
+
 function cotizacionDirectaHabilitada(contact) {
   var cfg = String(process.env.MAMPARAS_COTIZACION_DIRECTA || "").trim().toLowerCase();
   if (!cfg || cfg === "no" || cfg === "false" || cfg === "0") return false;
   if (cfg === "todos" || cfg === "si" || cfg === "true" || cfg === "1") return true;
   if (!contact) return false;
-  var numeros = [soloDigitos(contact.channel_id), soloDigitos(contact.phone)].filter(function(n) { return n.length >= 8; });
-  var lista = cfg.split(/[,;\s]+/).map(soloDigitos).filter(function(n) { return n.length >= 8; });
+  // La lista se separa SOLO por comas o punto y coma (los espacios son parte del numero).
+  var lista = cfg.split(/[,;]+/).map(normalizarCelularAR).filter(function(n) { return n.length === 10; });
+  var numeros = [contact.channel_id, contact.phone].map(normalizarCelularAR).filter(function(n) { return n.length === 10; });
   for (var i = 0; i < lista.length; i++) {
-    var objetivo = lista[i].slice(-10);
-    for (var j = 0; j < numeros.length; j++) {
-      // WhatsApp Argentina a veces trae el 9 extra (549...): comparamos los ultimos 10 sin el 9 movil
-      var n = numeros[j].replace(/^549/, "54").slice(-10);
-      if (n === objetivo || numeros[j].slice(-10) === objetivo) return true;
-    }
+    if (numeros.indexOf(lista[i]) !== -1) return true;
   }
   return false;
 }
