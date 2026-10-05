@@ -233,9 +233,9 @@ var COMPANY_KNOWLEDGE = [
   "  2. Preguntar cuando fue colocada.",
   "- Si se confirma que es obra nuestra, informar sobre la VISITA TECNICA:",
   "  - Un tecnico coordina una visita al domicilio para verificar el problema.",
-  "  - Costo de la visita tecnica: $70.000 IVA incluido.",
-  "  - Ese monto se descuenta del presupuesto del servicio si el cliente lo contrata.",
-  "  - Si no contrata el servicio, los $70.000 NO se devuelven.",
+  "  - Costo de la visita tecnica fuera de garantia: $85.000 IVA incluido.",
+  "  - Ese monto se descuenta del presupuesto del servicio si el cliente lo contrata (es un descuento real).",
+  "  - Si no contrata el servicio, los $85.000 NO se devuelven.",
   "  - Despues de la visita, el departamento tecnico envia una cotizacion del servicio.",
   "- Si la obra NO es nuestra, informar amablemente que no realizamos servicio en aberturas de otros fabricantes.",
   "",
@@ -518,7 +518,7 @@ async function generateAutoReply(contact, messages) {
     stageInstructions += "- RETIRO DE ABERTURA EXISTENTE: Si el cliente menciona que tiene una abertura vieja/existente para sacar, aclarale que el retiro NO está incluido en la instalación, que se evalúa y se cotiza aparte según la mano de obra, y que no hacemos albañilería. Anotalo en las notas del resumen. No lo trates como un dato obligatorio para cotizar.\n";
     stageInstructions += "- Si el cliente ya proporcionó TODOS los datos necesarios, confirmá que se va a preparar el presupuesto en hasta 72 hs hábiles.\n";
     stageInstructions += "- NO repitas datos que el cliente ya proporcionó en mensajes anteriores.\n";
-    stageInstructions += "- Si el cliente consulta por servicio de carpintería/reparación, seguí el protocolo de servicio post-venta: verificar que sea obra nuestra, informar sobre visita técnica ($70.000 IVA inc.).\n";
+    stageInstructions += "- Si el cliente consulta por servicio de carpintería/reparación, seguí el protocolo de servicio post-venta: verificar que sea obra nuestra, informar sobre visita técnica fuera de garantía ($85.000 IVA inc., se descuenta si contrata el servicio).\n";
     stageInstructions += "- Si la consulta es por TRABAJO o búsquedas laborales (no es un cliente): NO pidas datos de cotización. Invitá a adjuntar el CV por este canal o enviarlo a msoriano@aberturaswindows.com.ar, y si lo adjunta, agradecé e informá que lo estaremos analizando. Mantené stage_assessment en 'continuar'.\n";
   } else if (stage === "presupuesto_enviado" || stage === "seguimiento") {
     stageInstructions = "ETAPA ACTUAL: Seguimiento de presupuesto.\n";
