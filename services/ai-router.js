@@ -1,581 +1,816 @@
-var express = require("express");
-var router = express.Router();
-var getDb = require("../db/setup").getDb;
-var classifyMessage = require("../services/ai-router").classifyMessage;
-var generateAutoReply = require("../services/ai-router").generateAutoReply;
-var detectLostReason = require("../services/ai-router").detectLostReason;
-var mamparas = require("../services/mamparas");
-var catalogos = require("../services/catalogos");
-var whatsapp = require("../services/channels/whatsapp");
-var instagram = require("../services/channels/instagram");
-var facebook = require("../services/channels/facebook");
-var email = require("../services/channels/email");
-var profilePicture = require("../services/profile-picture");
+var mamparas = require("./mamparas");
+var catalogos = require("./catalogos");
 var fs = require("fs");
 var path = require("path");
-var axios = require("axios");
-var FormData = require("form-data");
-
 var MEDIA_DIR = fs.existsSync("/data") ? "/data/media" : path.join(__dirname, "..", "data", "media");
-if (!fs.existsSync(MEDIA_DIR)) { try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch(e) {} }
+var axios = require("axios");
 
-// Cola simple en memoria para procesar auto-replies secuencialmente.
-// Esto evita que 50 mensajes simultaneos disparen 50 llamadas a la IA a la vez
-// y provoquen rate limits (429) en la API de Anthropic.
-var autoReplyQueue = [];
-var autoReplyProcessing = false;
-var MIN_DELAY_BETWEEN_REPLIES_MS = 1500; // 1.5s entre cada respuesta
-var debounceTimers = {}; // contactId -> setTimeout handle; espera 10s de silencio antes de disparar auto-reply
+// Wrapper con retry + backoff exponencial para llamadas a Anthropic API.
+// Maneja 429 (rate limit) y errores de red temporales (5xx, timeouts).
+// Reintenta hasta 4 veces esperando 2s, 4s, 8s, 16s entre intentos.
+async function callAnthropic(payload, maxRetries) {
+  if (typeof maxRetries === "undefined") maxRetries = 4;
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurada");
 
-// ANTI-DUPLICADO SALIENTE: si la respuesta generada es identica al ultimo mensaje
-// saliente enviado a ese contacto dentro de esta ventana, NO se envia de nuevo.
-// Cubre el caso de dos mensajes del cliente separados por mas de 10s (dos debounce)
-// que generan respuestas casi identicas.
-var DUPLICATE_REPLY_WINDOW_MS = 2 * 60 * 1000; // 2 minutos
-
-async function processAutoReplyQueue() {
-  if (autoReplyProcessing) return;
-  autoReplyProcessing = true;
-  while (autoReplyQueue.length > 0) {
-    var job = autoReplyQueue.shift();
+  var attempt = 0;
+  var lastError = null;
+  while (attempt <= maxRetries) {
     try {
-      // Re-leer el contacto desde DB por si su estado cambio mientras estaba en cola
-      var db = getDb();
-      var freshContact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(job.contact.id);
-      if (freshContact && !freshContact.ai_paused) {
-        await handleAutoReply(freshContact, job.channel);
-      } else if (freshContact && freshContact.ai_paused) {
-        console.log("[QUEUE] Saltado auto-reply para " + freshContact.name + " (Claudia fue pausada mientras estaba en cola)");
+      var res = await axios.post("https://api.anthropic.com/v1/messages", payload, {
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01"
+        },
+        timeout: 60000
+      });
+      if (attempt > 0) {
+        console.log("[IA] Llamada exitosa despues de " + attempt + " reintentos");
       }
+      return res;
     } catch (err) {
-      console.error("[QUEUE] Error procesando auto-reply:", err.message);
+      lastError = err;
+      var status = err.response ? err.response.status : null;
+      var isRetryable = status === 429 || status === 529 || (status >= 500 && status < 600) || err.code === "ETIMEDOUT" || err.code === "ECONNRESET" || err.code === "ECONNABORTED";
+
+      if (!isRetryable || attempt >= maxRetries) {
+        // No es retryable o ya agotamos reintentos
+        throw err;
+      }
+
+      var waitMs = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s, 16s
+      // Si la respuesta incluye retry-after, lo respetamos
+      if (err.response && err.response.headers && err.response.headers["retry-after"]) {
+        var retryAfter = parseInt(err.response.headers["retry-after"]);
+        if (!isNaN(retryAfter) && retryAfter > 0) {
+          waitMs = Math.min(retryAfter * 1000, 30000); // tope 30s
+        }
+      }
+      console.log("[IA] " + (status || err.code) + " recibido, reintento " + (attempt + 1) + "/" + maxRetries + " en " + (waitMs / 1000) + "s...");
+      await new Promise(function(resolve) { setTimeout(resolve, waitMs); });
+      attempt++;
     }
-    // Pequena espera entre respuestas para no saturar la API
-    if (autoReplyQueue.length > 0) {
-      await new Promise(function(resolve) { setTimeout(resolve, MIN_DELAY_BETWEEN_REPLIES_MS); });
+  }
+  throw lastError;
+}
+
+var DEPARTMENTS = {
+  ventas: { label: "Ventas", description: "Consultas comerciales, cotizaciones, planes, productos, demos, precios" },
+  soporte: { label: "Soporte Tecnico", description: "Problemas tecnicos, errores, configuracion, bugs, rendimiento" },
+  admin: { label: "Administracion", description: "Facturas, pagos, datos fiscales, CUIT, suscripciones, comprobantes" },
+  reclamos: { label: "Reclamos", description: "Quejas, insatisfaccion, devoluciones, reembolsos, denuncias" }
+};
+
+var COMPANY_KNOWLEDGE = [
+  "SOBRE LA EMPRESA:",
+  "Aberturas Windows (De Pissis S.A.) es una empresa especializada en aberturas a medida en Mendoza, Argentina.",
+  "Direccion: Alberdi 1315 esquina Uruguay, San Jose, Guaymallen, Mendoza.",
+  "Horario: Lunes a Viernes de 9 a 17 hs.",
+  "Telefono ventas: 261-353-9384.",
+  "Realizamos obras en todo el pais. Fuera del Gran Mendoza tiene recargo de medicion, flete e instalacion que se calcula para cada obra.",
+  "",
+  "CORREOS DE CONTACTO (USO CORRECTO - NO CONFUNDIR):",
+  "- ventas@aberturaswindows.com.ar -> consultas comerciales, envio de planos, croquis, fotos, pedidos de cotizacion y presupuestos. Es el correo del sector Ventas (el mismo sector que atiende este chat de WhatsApp).",
+  "- medicionesyservicios@aberturaswindows.com.ar -> EXCLUSIVAMENTE para coordinar mediciones de obra en domicilio (una vez aprobado un presupuesto) o servicios tecnicos post-venta. NUNCA usar este correo para enviar planos o pedir cotizaciones.",
+  "- msoriano@aberturaswindows.com.ar -> EXCLUSIVAMENTE para recepcion de CV / busquedas laborales. NUNCA usar este correo para cotizaciones, planos ni consultas comerciales.",
+  "",
+  "ENVIO DE PLANOS / ARCHIVOS PARA COTIZAR:",
+  "- Cuando un cliente quiera enviar planos, croquis, fotos o medidas para cotizar carpinteria, SIEMPRE sugerir PRIMERO que los envie por este mismo chat de WhatsApp, ya que esta hablando directamente con el sector de Ventas (261-353-9384).",
+  "- Solo si el cliente prefiere o insiste en usar correo electronico, indicar: ventas@aberturaswindows.com.ar",
+  "- NUNCA dar el correo medicionesyservicios@aberturaswindows.com.ar para envio de planos o solicitudes de cotizacion.",
+  "- Ejemplo correcto: 'Puede enviarmelos directamente por aca, este chat es con el sector de Ventas asi que el equipo los recibe y los evalua. Si prefiere correo, tambien puede escribir a ventas@aberturaswindows.com.ar.'",
+  "",
+  "BUSQUEDAS LABORALES / RECEPCION DE CV:",
+  "- Si una persona pregunta por trabajo, empleo o busquedas laborales (ej: 'estan tomando gente?', 'tienen busquedas abiertas?', 'quiero trabajar con ustedes', 'donde dejo mi CV?'), responder que puede adjuntar su CV directamente por este mismo canal, o si lo prefiere, enviarlo por correo a msoriano@aberturaswindows.com.ar.",
+  "- Invitarla a adjuntar el CV por aca mismo (PDF, imagen o archivo).",
+  "- Si la persona adjunta un CV o envia sus datos laborales, agradecer con un mensaje como: 'Muchas gracias por enviarnos su CV. Lo estaremos analizando y en caso de avanzar nos comunicaremos con usted.'",
+  "- En consultas laborales NO pedir datos de cotizacion, NO derivar a ventas, NO ofrecer presupuestos y NO prometer plazos de respuesta ni entrevistas.",
+  "- No confirmar ni negar si hay busquedas abiertas: simplemente indicar que puede enviar su CV y que queda en nuestra base para futuras busquedas.",
+  "",
+  "PRODUCTOS PRINCIPALES:",
+  "- Aberturas de ALUMINIO: desde media prestacion hasta RPT (maxima prestacion). Extrusoras: FLAMIA y ALUWIND (linea Enkel de alta prestacion, minimalista).",
+  "- Aberturas de PVC: perfiles REHAU, la mejor empresa de perfiles de PVC en Argentina.",
+  "- Cortinas de interior y toldos de exterior: FLEXCOLOR (empresa mendocina).",
+  "- Mamparas de bano: GLASSIC.",
+  "- Persianas de aluminio inyectado y mosquiteros enrollables: LUXE PERFIL.",
+  "- Puertas ventanas de aluminio: ALUTECNIC.",
+  "- Portones seccionales: HORMANN.",
+  "- Puertas placas interior (solo provision, NO instalacion): INDOORS.",
+  "- Barandas de balcon, frentes de placard, espejos.",
+  "- Puertas automaticas: AUDOOR.",
+  "- Toldos: IPROA.",
+  "",
+  "PUERTAS PLEGADIZAS / PLEGABLES / TIPO FUELLE (MUY IMPORTANTE - PREGUNTAR ANTES DE NEGAR O CONFIRMAR):",
+  "- NO fabricamos puertas plegadizas chicas de interior tipo fuelle (las tipicas de aprox. 90 x 200 cm para placard, bano o paso interior).",
+  "- SI fabricamos cerramientos plegables para galerias, balcones o interiores amplios, con ancho MINIMO de 200 a 250 cm.",
+  "- Si el cliente menciona 'puerta plegadiza', 'plegable' o 'fuelle' SIN dar detalles de uso ni medidas, NO la niegues ni la confirmes de entrada: PRIMERO pregunta para que espacio la necesita y que medidas aproximadas tiene el vano. Ejemplo: 'Con gusto le comento. La puerta plegadiza que busca, seria para un interior chico como un placard o bano, o para cerrar una galeria, balcon o un ambiente amplio? Que medidas aproximadas tiene el vano?'",
+  "- Con la respuesta del cliente, deduci:",
+  "  * Interior chico tipo fuelle (placard, bano, paso interior, ancho menor a 200 cm, tipo 90 x 200): explica amablemente que ese tipo de puerta NO lo fabricamos, ya que trabajamos aberturas a medida de mayores dimensiones.",
+  "  * Galeria, balcon o ambiente amplio, con ancho de 200 cm o mas: SI es nuestro cerramiento plegable. Segui el flujo normal de cotizacion y pedi los datos.",
+  "- Si por el primer mensaje ya queda claro el uso o las medidas (ej: 'para el placard, de 90 de ancho'), no hace falta preguntar: responde directo segun las reglas anteriores.",
+  "",
+  "LINEAS DE PERFILERIA POR MARCA (MUY IMPORTANTE - NO CONFUNDIR MARCAS):",
+  "- FLAMIA S.A. (ALUMINIO). Las siguientes lineas son TODAS de FLAMIA, y SI las trabajamos:",
+  "  * Europa 60",
+  "  * Novissima",
+  "  * Clasica 60",
+  "  * Domo 60",
+  "  * Domo 114",
+  "  * Domo 60 RPT",
+  "  * Novissima RPT",
+  "  * Ecoslide RPT",
+  "- ALUWIND (ALUMINIO): linea Enkel (alta prestacion, minimalista).",
+  "- REHAU (PVC). Las siguientes lineas son TODAS de REHAU, y SI las trabajamos:",
+  "  * Euro-Design (Eurodesign)",
+  "  * Prestige 70",
+  "  * High Design (Highdesign)",
+  "- Si el cliente pregunta por una linea de REHAU que no figura aca, NO la niegues ni la inventes: responde 'Lo consulto con el area tecnica y le confirmo'.",
+  "- ATENCION: Europa 60, Novissima, Clasica 60, Domo y Ecoslide son lineas de ALUMINIO de FLAMIA. Euro-Design, Prestige 70 y High Design son lineas de PVC de REHAU. NO las mezcles: NUNCA atribuyas una linea a una marca distinta de la indicada en esta lista. Ojo con la confusion tipica: 'Europa 60' es de FLAMIA (aluminio) y 'Euro-Design' es de REHAU (PVC), son lineas distintas de marcas distintas.",
+  "",
+  "REGLA GENERAL SOBRE LINEAS, MARCAS Y PRODUCTOS:",
+  "- NUNCA afirmes que NO trabajamos una linea, marca o producto, salvo que este conocimiento lo diga explicitamente.",
+  "- Si el cliente menciona una linea, marca o producto que NO figura en este conocimiento, NO lo niegues, NO lo confirmes y NO inventes de que marca es: responde 'Lo consulto con el area tecnica y le confirmo'.",
+  "- Tampoco inventes detalles sobre archivos, planos o fotos que el cliente no envio en esta conversacion.",
+  "",
+  "LINEA CANADIAN PROFILE (REVESTIMIENTOS, PISOS Y DECK WPC/SPC):",
+  "Ademas de aberturas, trabajamos productos de la marca CANADIAN PROFILE. Si un cliente consulta por esta marca, confirmar que SI somos distribuidores y la trabajamos.",
+  "Lineas disponibles:",
+  "- Revestimientos de pared interior: placas y paneles WPC, placas PS simil madera, placas SPC simil marmol y travertino.",
+  "- Revestimientos exteriores: revestimiento portante y siding (colores negro, blanco, gris, cafe y teca).",
+  "- Pisos SPC: sistema click con goma IXPE aplicada, y simil porcelanato. Incluye zocalos a juego.",
+  "- Deck exterior: tablas, baldosas encastrables, soportes de conexion y clavadores.",
+  "- Parasoles lisos y 3D, angulos, esquineros, molduras y cubrecantos.",
+  "- Cerco perimetral: tablas WPC con kit de postes de aluminio y bases de acero.",
+  "- Accesorios y griferia de bano: toalleros, porta vasos, jaboneras, griferias, monocomando y duchas.",
+  "Mas info: www.canadianprofile.com.ar - Instagram @canadianprofilearg",
+  "IMPORTANTE: NO dar precios de productos Canadian Profile por mensaje. Igual que con las aberturas, siempre ofrecer armar un presupuesto formal y pedir los datos necesarios.",
+  "",
+  "HERRAJES:",
+  "- PVC REHAU: herrajes marca GU, ASSA ABLOY, rodamientos PABOSSE.",
+  "- Aluminio FLAMIA: herrajes marca TANIT, GIESSE, PABOSSE.",
+  "- IMPORTANTE: No mencionar ni afirmar que usamos herrajes de otras marcas. Si no estas seguro de un dato tecnico sobre herrajes u otros componentes, NO lo inventes. Consulta internamente o responde al cliente 'lo consultamos con el area tecnica y te confirmamos'.",
+  "",
+  "TERMINACIONES EN ALUMINIO:",
+  "Pintados: Blanco, Bronce Colonial, Negro, Gris Oscuro, Simil Anodizado Natural, Simil Madera.",
+  "Microtexturados: Marron Claro, Marron Oscuro, Negro, Gris Oscuro, Gris Metalizado.",
+  "Anodizados: Natural, Gris, Peltre, Champagne, Bronce Claro, Bronce Medio, Bronce Oscuro, Negro.",
+  "Los anodizados tienen variantes: Liso, Lijado, Pulido Brillante y Pulido Mate.",
+  "",
+  "SOBRE LA PINTURA EN POLVO TERMOCONVERTIBLE:",
+  "Proceso de 3 etapas: pre-tratamiento (desengrase, mordentado, conversion con titanio), aplicacion electrostatica robotica del polvo, y curado a temperatura.",
+  "Tipos: Epoxi (interiores, resistencia quimica), Poliester (exteriores, resistencia UV), Hibrido (interiores/decoracion), Poliuretano (exteriores, brillo duradero).",
+  "Acabados: brillantes, mates, semimates, texturados y metalizados. Se pintan entre 60 y 90 micrones.",
+  "Mantenimiento: limpieza con jabon neutro y agua. Evitar contacto con cal, cemento y yeso (manchas permanentes).",
+  "",
+  "SOBRE EL ANODIZADO:",
+  "Proceso electroquimico que forma una capa de alumina protectora sobre el aluminio. A diferencia de la pintura, pasa a formar parte de la estructura del metal.",
+  "Ventajas: resistencia a corrosion, abrasion, rayos UV. Ideal para zonas costeras. No se pela ni escama. Aspecto metalico unico.",
+  "Los colores se logran por electrocoloracion con sales de estano sobre los poros de la capa anodica. Colores estables a rayos UV.",
+  "Mantenimiento: jabon neutro y agua. Evitar sustancias alcalinas/acidas fuertes, cloro, lavandina, soda caustica.",
+  "",
+  "COLORES EN PVC:",
+  "- Color base: blanco.",
+  "- Foliados: toda la gama de foliados de REHAU.",
+  "- Mas info PVC REHAU: https://www.rehau.com/ar-es/ventanas-de-pvc/elegir-ventanas-rehau",
+  "",
+  "PLAZOS DE ENTREGA (desde medicion final):",
+  "- Aluminio pintado blanco: 35 a 45 dias habiles (plazo minimo, es la terminacion mas rapida).",
+  "- Aluminio otros pintados (bronce colonial, negro, etc.): 45 a 60 dias habiles.",
+  "- Aluminio microtexturado y anodizado: 70 a 90 dias habiles.",
+  "- PVC blanco: 45 a 60 dias habiles.",
+  "- PVC foliado: 70 a 90 dias habiles.",
+  "- Los plazos dependen de la cantidad de aberturas, si incluye o no instalacion, y si es con o sin colocacion.",
+  "",
+  "PROCESO DE VENTA:",
+  "1. El cliente consulta y le pedimos los siguientes datos para cotizar:",
+  "   - Nombre y apellido para el presupuesto",
+  "   - Numero de telefono (si no lo tenemos)",
+  "   - Si incluye o no instalacion",
+  "   - Direccion de la obra (si requiere instalacion)",
+  "   - Que producto quiere cotizar (tipo de abertura: corrediza, de abrir, etc.)",
+  "   - Material de las aberturas: ALUMINIO o PVC (si el cliente no lo aclaro, preguntarlo)",
+  "   - Tiene plano de carpinterias (si o no)",
+  "   - Color de la perfileria",
+  "   - Tipo de vidrio: DVH (doble vidrio hermetico) o vidrio simple",
+  "   - Medidas aproximadas",
+  "2. Se arma el presupuesto en hasta 72 hs habiles.",
+  "3. Se envia el presupuesto por WhatsApp o mail segun prefiera el cliente.",
+  "4. Lo ideal es que el cliente visite el showroom para ver las lineas en exhibicion.",
+  "5. Una vez que contrata, un tecnico visita la obra cuando esta en condiciones y toma las medidas finales.",
+  "",
+  "CONDICIONES PARA MEDICION FINAL:",
+  "- El 100% de los vanos deben estar recuadrados con terminacion final para pintar o texturar.",
+  "- Los vanos deben estar a nivel, plomo y escuadra.",
+  "- Para puertas de abrir o corredizas: debe haber contrapiso terminado y tipo de piso definido.",
+  "- Para vanos con aberturas en esquina a 90 grados o bow windows: debe estar realizada la terminacion de yeso o enlucido fino en muros interiores.",
+  "- Estos requisitos son obligatorios. Si no se cumplen, la medicion se suspende hasta que la obra este en condiciones.",
+  "- Una vez realizada la medicion definitiva, NO se pueden modificar los vanos. Si hay cambios, se cobra un costo adicional.",
+  "",
+  "CONDICIONES PARA COLOCACION:",
+  "- Revestimientos ceramicos en muros de banos, cocina y lavadero deben estar colocados.",
+  "- Yeso o enlucido fino en todos los muros interiores terminados.",
+  "- Revestimiento de piso colocado donde se deban colocar puertas de abrir.",
+  "- Para puertas ventanas corredizas con riel inferior embutido: dejar sin colocar la ultima hilera de ceramico frente a la abertura.",
+  "- Contacto del area de Mediciones y Servicios Tecnicos (SOLO para coordinar mediciones de obra y servicios post-venta, NO para cotizaciones): 261-526-3244 o medicionesyservicios@aberturaswindows.com.ar",
+  "",
+  "ALCANCE DE LA INSTALACION / RETIRO DE ABERTURAS EXISTENTES / ALBANILERIA (MUY IMPORTANTE):",
+  "- NO realizamos trabajos de albanileria de ningun tipo: romper o picar muros, amurar, revocar, enlucir, reparar mamposteria, recuadrar vanos, colocar ceramicos, etc. Esos trabajos los debe resolver el cliente con un albanil.",
+  "- El retiro o desmonte de aberturas existentes (de madera, hierro, aluminio o cualquier material) NO esta incluido en el servicio de instalacion.",
+  "- Si el cliente necesita retirar una abertura existente, se evalua caso por caso y, si corresponde, se cotiza APARTE segun la mano de obra que implique el trabajo.",
+  "- Si para retirar la abertura existente hace falta albanileria (por ejemplo marcos amurados), esa parte NO la hacemos: la tiene que resolver el cliente con un albanil antes de la medicion final.",
+  "- NUNCA digas que 'retiramos la abertura existente', que 'el retiro esta incluido' ni que 'no hay problema, nos encargamos'.",
+  "- Respuesta modelo: 'Le comento que el retiro de la abertura existente no esta incluido en la instalacion. Si hace falta desmontarla, lo evaluamos y se cotiza aparte segun el trabajo que implique. Tenga en cuenta que no realizamos trabajos de albanileria, asi que si hay que romper o reparar muro, eso lo tendria que resolver con un albanil.'",
+  "- Si el cliente pide que el retiro se incluya en el presupuesto, anotalo en las notas para que el asesor lo evalue, sin prometer que se va a hacer ni dar un costo.",
+  "",
+  "REGLA GENERAL SOBRE LO QUE INCLUYE CADA SERVICIO:",
+  "- NUNCA afirmes que un trabajo, tarea o servicio esta INCLUIDO (en la instalacion, en el presupuesto o en cualquier servicio) salvo que este conocimiento lo diga explicitamente.",
+  "- Ante cualquier consulta sobre el alcance de un trabajo que no figure aca (retiros, desmontes, terminaciones, sellados especiales, trabajos en altura, andamios, flete especial, obras complementarias, etc.), NO lo confirmes ni lo niegues: responde 'Lo consulto con el area tecnica y le confirmo'.",
+  "",
+  "SERVICIO POST-VENTA / SERVICIO DE CARPINTERIA:",
+  "- SOLO hacemos servicio en aberturas fabricadas e instaladas por nosotros.",
+  "- Si alguien solicita servicio de carpinteria, PRIMERO verificar que la obra sea nuestra:",
+  "  1. Preguntar a nombre de quien estaba la obra.",
+  "  2. Preguntar cuando fue colocada.",
+  "- Si se confirma que es obra nuestra, informar sobre la VISITA TECNICA:",
+  "  - Un tecnico coordina una visita al domicilio para verificar el problema.",
+  "  - Costo de la visita tecnica fuera de garantia: $85.000 IVA incluido.",
+  "  - Ese monto se descuenta del presupuesto del servicio si el cliente lo contrata (es un descuento real).",
+  "  - Si no contrata el servicio, los $85.000 NO se devuelven.",
+  "  - Despues de la visita, el departamento tecnico envia una cotizacion del servicio.",
+  "- Si la obra NO es nuestra, informar amablemente que no realizamos servicio en aberturas de otros fabricantes.",
+  "",
+  "IMPORTANTE:",
+  "- Trabajamos sobre pedido, NO tenemos productos estandar ni entregas inmediatas. No tenemos aberturas en stock.",
+  "- Cada cotizacion se realiza de manera detallada y personalizada.",
+  "- No dar precios por mensaje, siempre ofrecer armar un presupuesto formal.",
+  "- Los descuentos, promociones bancarias y condiciones de pago van especificados en cada presupuesto."
+].join("\n");
+
+var CLAUDIA_PERSONA = [
+  "IDENTIDAD:",
+  "- Tu nombre es Claudia. Sos la asistente virtual de Aberturas Windows.",
+  "- TRATO: Siempre tratá al cliente de USTED. Nunca lo tutees. Adaptá todos los verbos en consecuencia (usted tiene, usted quiere, ¿en qué le puedo ayudar?, etc.).",
+  "- VOZ: Profesional, cálida y natural. Usá expresiones argentinas apropiadas: 'Con mucho gusto', 'Por supuesto', 'Le comento que...', 'Quedamos a su disposición', 'Muchas gracias por comunicarse'.",
+  "- PRIMER MENSAJE: Si en el historial NO hay mensajes previos del 'Agente', comenzá SIEMPRE saludando según la hora indicada y presentate: 'Buenos [días/tardes/noches], soy Claudia de Aberturas Windows. ¿En qué le puedo ayudar?'",
+  "- Si YA hay mensajes del 'Agente' en el historial, no te presentes de nuevo, continuá la conversación normalmente.",
+  "- Si el cliente pregunta quién sos, respondé con honestidad: sos Claudia, la asistente virtual de Aberturas Windows.",
+  "- Nunca afirmes ser una persona humana. Si te preguntan directamente, aclará que sos una asistente virtual."
+].join("\n");
+
+var QUOTE_DATA_FIELDS = [
+  "nombre y apellido para el presupuesto",
+  "numero de telefono (si no lo tenemos)",
+  "si incluye o no instalacion",
+  "direccion de la obra (si incluye instalacion)",
+  "que producto quiere cotizar (tipo de abertura: corrediza, de abrir, etc.)",
+  "material de las aberturas: ALUMINIO o PVC (si el cliente no lo aclaro, preguntarlo)",
+  "tiene plano de carpinterias (si o no)",
+  "color de la perfileria",
+  "tipo de vidrio (DVH o simple)",
+  "medidas aproximadas"
+];
+
+var STAGE_LABELS = {
+  consulta: "Consulta inicial",
+  recopilando_datos: "Recopilando datos para cotizar",
+  datos_completos: "Datos completos - Armar presupuesto",
+  presupuesto_enviado: "Presupuesto enviado - Esperando respuesta",
+  seguimiento: "En seguimiento",
+  cerrado_ganado: "Cerrado - Ganado",
+  cerrado_perdido: "Cerrado - Perdido",
+  sin_respuesta: "Sin respuesta"
+};
+
+function getArgentinaTime() {
+  var now = new Date();
+  var argTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+  var hour = argTime.getHours();
+  var greeting;
+  if (hour >= 6 && hour < 13) {
+    greeting = "Buenos dias";
+  } else if (hour >= 13 && hour < 20) {
+    greeting = "Buenas tardes";
+  } else {
+    greeting = "Buenas noches";
+  }
+  return { hour: hour, greeting: greeting };
+}
+
+
+// Construye bloques de imagen (vision) con las ultimas fotos enviadas por el cliente.
+// Devuelve un array de content blocks para la API de Anthropic (max 3 imagenes, max 4MB c/u).
+// contexto (opcional): string para identificar en los logs quien pidio las imagenes
+// (ej: "auto-reply Soledad"). Cada imagen salteada loguea el motivo exacto, y al final
+// se loguea un resumen [VISION] para poder diagnosticar fallas desde Railway.
+function buildImageBlocks(messages, contexto) {
+  var blocks = [];
+  var candidatas = 0;
+  var ctx = contexto ? " (" + contexto + ")" : "";
+  var extMime = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif" };
+  var recientes = messages.slice(-10);
+  for (var i = recientes.length - 1; i >= 0 && blocks.length < 3; i--) {
+    var m = recientes[i];
+    if (m.direction !== "incoming" || m.media_type !== "image" || !m.media_url) continue;
+    candidatas++;
+    try {
+      var filename = m.media_url.split("/").pop();
+      var filepath = path.join(MEDIA_DIR, filename);
+      if (!fs.existsSync(filepath)) {
+        console.error("[VISION] Imagen salteada: archivo no existe en " + filepath + ctx);
+        continue;
+      }
+      var stat = fs.statSync(filepath);
+      if (stat.size > 4 * 1024 * 1024) {
+        console.error("[VISION] Imagen salteada: " + filename + " pesa " + Math.round(stat.size / 1024) + " KB (limite 4096 KB)" + ctx);
+        continue;
+      }
+      var ext = path.extname(filename).toLowerCase();
+      var mime = extMime[ext] || "image/jpeg";
+      var b64 = fs.readFileSync(filepath).toString("base64");
+      blocks.unshift({ type: "image", source: { type: "base64", media_type: mime, data: b64 } });
+    } catch (e) {
+      console.error("[VISION] Error leyendo imagen " + m.media_url + ": " + e.message + ctx);
     }
   }
-  autoReplyProcessing = false;
-}
-
-function enqueueAutoReply(contact, channel) {
-  autoReplyQueue.push({ contact: contact, channel: channel });
-  console.log("[QUEUE] Encolado auto-reply para " + contact.name + " (posicion " + autoReplyQueue.length + " en cola)");
-  // Arrancar procesamiento con un pequeno delay inicial
-  setTimeout(function() { processAutoReplyQueue(); }, 1500);
-}
-
-function isAutoReplyEnabled(channel) {
-  try {
-    var db = getDb();
-    db.exec("CREATE TABLE IF NOT EXISTS auto_reply_settings (channel TEXT PRIMARY KEY, enabled INTEGER DEFAULT 0)");
-    var setting = db.prepare("SELECT enabled FROM auto_reply_settings WHERE channel = ?").get(channel);
-    return setting && setting.enabled === 1;
-  } catch (e) {
-    return false;
+  if (candidatas > 0) {
+    console.log("[VISION] " + blocks.length + " de " + candidatas + " imagen(es) adjuntadas" + ctx);
   }
+  return blocks;
 }
 
-// Compara la respuesta generada contra el ultimo mensaje saliente del contacto.
-// Devuelve true si es un duplicado reciente (mismo texto dentro de la ventana).
-function isDuplicateReply(db, contactId, replyText) {
-  try {
-    var lastOut = db.prepare("SELECT content, created_at FROM messages WHERE contact_id = ? AND direction = 'outgoing' ORDER BY created_at DESC, id DESC LIMIT 1").get(contactId);
-    if (!lastOut || !lastOut.content) return false;
-    if (lastOut.content.trim() !== replyText.trim()) return false;
-    // created_at de SQLite (CURRENT_TIMESTAMP) viene en UTC formato "YYYY-MM-DD HH:MM:SS"
-    var ts = new Date(String(lastOut.created_at).replace(" ", "T") + "Z").getTime();
-    if (isNaN(ts)) return true; // texto identico y fecha ilegible: mejor no reenviar
-    return (Date.now() - ts) < DUPLICATE_REPLY_WINDOW_MS;
-  } catch (e) {
-    return false;
-  }
+function formatMessageForHistory(m) {
+  var role = m.direction === "incoming" ? "Cliente" : "Agente";
+  var texto = m.content;
+  if (texto === "[Audio]") texto = "(envio un mensaje de voz que no se puede transcribir, responde normalmente y pregunta en que podes ayudarlo)";
+  else if (texto === "[Imagen]") texto = "(envio una imagen)";
+  else if (texto === "[Video]") texto = "(envio un video)";
+  else if (texto === "[Archivo]") texto = "(envio un archivo)";
+  return role + ": " + texto;
 }
 
-async function sendChannelMessage(channel, channelId, phoneLine, contactEmail, text) {
-  var sendResult = { success: true, simulated: true };
-  if (channel === "whatsapp") {
-    sendResult = await whatsapp.sendMessage(channelId, text, phoneLine || 1);
-  } else if (channel === "instagram") {
-    sendResult = await instagram.sendMessage(channelId, text);
-  } else if (channel === "facebook") {
-    sendResult = await facebook.sendMessage(channelId, text);
-  } else if (channel === "email") {
-    sendResult = await email.sendMessage(contactEmail, "Re: Consulta - Aberturas Windows", text);
-  }
-  return sendResult;
-}
-
-async function downloadMediaIfNeeded(normalized) {
-  if (!normalized._needsDownload || !normalized.mediaUrl) return;
-  try {
-    var downloadFn = null;
-    if (normalized.channel === "instagram") {
-      downloadFn = instagram.downloadMedia;
-    } else if (normalized.channel === "facebook") {
-      downloadFn = facebook.downloadMedia;
-    } else if (normalized.channel === "whatsapp") {
-      downloadFn = whatsapp.downloadMedia;
-    }
-    if (downloadFn) {
-      var localUrl = await downloadFn(normalized.mediaUrl, normalized.mediaType, normalized.messageId);
-      normalized.mediaUrl = localUrl;
-      console.log("[MEDIA] Descargada y guardada: " + localUrl);
-    }
-  } catch (err) {
-    console.error("[MEDIA] Error descargando:", err.message);
-  }
-}
-
-async function transcribeAudio(mediaUrl) {
-  var apiKey = process.env.OPENAI_API_KEY;
+async function classifyMessage(messageText, conversationHistory) {
+  if (!conversationHistory) conversationHistory = [];
+  var apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.log("[TRANSCRIPCION] OPENAI_API_KEY no configurada, no se puede transcribir");
-    return null;
+    return classifyByKeywords(messageText);
   }
 
+  var historyText = "";
+  if (conversationHistory.length > 0) {
+    var lines = conversationHistory.map(function(m) {
+      return formatMessageForHistory(m);
+    });
+    historyText = "\nHistorial previo de la conversacion:\n" + lines.join("\n") + "\n";
+  }
+
+  var prompt = "Sos un sistema de clasificacion de consultas para Aberturas Windows, empresa de aberturas de aluminio y PVC en Mendoza, Argentina.\n\n";
+  prompt += "Departamentos disponibles:\n";
+  prompt += "- ventas: Consultas comerciales, cotizaciones, productos, precios, medidas, colores, tipos de aberturas, presupuestos\n";
+  prompt += "- soporte: Consultas tecnicas sobre medicion, colocacion, estado de fabricacion, problemas con aberturas instaladas, servicio post-venta de carpinteria\n";
+  prompt += "- admin: Facturas, pagos, datos fiscales, CUIT, transferencias, comprobantes\n";
+  prompt += "- reclamos: Quejas, insatisfaccion, devoluciones, problemas graves con el servicio\n";
+  prompt += historyText + "\n";
+  prompt += 'Ultimo mensaje del cliente: "' + messageText + '"\n\n';
+  prompt += 'Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato exacto:\n';
+  prompt += '{"department":"ventas|soporte|admin|reclamos","confidence":"alta|media|baja","reason":"explicacion breve"}';
+
   try {
-    var audioPath = null;
-
-    if (mediaUrl.startsWith("/media/") || mediaUrl.startsWith("/api/media/")) {
-      audioPath = path.join(MEDIA_DIR, path.basename(mediaUrl));
-    } else if (mediaUrl.startsWith("http")) {
-      var tmpPath = path.join(MEDIA_DIR, "tmp_audio_" + Date.now() + ".ogg");
-      var response = await axios.get(mediaUrl, { responseType: "arraybuffer" });
-      fs.writeFileSync(tmpPath, response.data);
-      audioPath = tmpPath;
-    }
-
-    if (!audioPath || !fs.existsSync(audioPath)) {
-      console.log("[TRANSCRIPCION] Archivo de audio no encontrado: " + mediaUrl);
-      return null;
-    }
-
-    var form = new FormData();
-    form.append("file", fs.createReadStream(audioPath), { filename: "audio.ogg", contentType: "audio/ogg" });
-    form.append("model", "whisper-1");
-    form.append("language", "es");
-
-    var res = await axios.post("https://api.openai.com/v1/audio/transcriptions", form, {
-      headers: Object.assign({ "Authorization": "Bearer " + apiKey }, form.getHeaders()),
-      maxContentLength: 25 * 1024 * 1024,
-      timeout: 30000
+    var res = await callAnthropic({
+      model: "claude-sonnet-4-6",
+      max_tokens: 150,
+      messages: [{ role: "user", content: prompt }]
     });
 
-    var transcription = res.data && res.data.text ? res.data.text.trim() : null;
-
-    if (audioPath.indexOf("tmp_audio_") !== -1) {
-      try { fs.unlinkSync(audioPath); } catch(e) {}
-    }
-
-    if (transcription) {
-      console.log("[TRANSCRIPCION] OK: " + transcription.substring(0, 80) + "...");
-    }
-    return transcription;
+    var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
+    var parsed = JSON.parse(text);
+    return {
+      department: parsed.department || "ventas",
+      confidence: parsed.confidence || "baja",
+      reason: parsed.reason || "No se pudo determinar con certeza"
+    };
   } catch (err) {
-    console.error("[TRANSCRIPCION] Error:", err.response ? err.response.data : err.message);
+    console.error("Error clasificando con IA:", err.message);
+    return classifyByKeywords(messageText);
+  }
+}
+
+async function generateSuggestion(contact, messages) {
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return "IA no configurada. Configura ANTHROPIC_API_KEY en el archivo .env";
+
+  var dept = DEPARTMENTS[contact.department] || DEPARTMENTS.ventas;
+  var lastMessages = messages.slice(-10);
+  var history = lastMessages.map(function(m) {
+    return formatMessageForHistory(m);
+  }).join("\n");
+
+  var channelLabels = {
+    whatsapp: "WhatsApp", instagram: "Instagram", facebook: "Facebook Messenger",
+    email: "Email", telefono: "Telefono"
+  };
+
+  var timeInfo = getArgentinaTime();
+  var now = new Date();
+  var argHour = now.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" });
+
+  var prompt = "Sos Claudia, la asistente virtual de atencion al cliente de Aberturas Windows, empresa especializada en aberturas a medida de aluminio y PVC en Mendoza, Argentina.\n\n";
+  prompt += CLAUDIA_PERSONA + "\n\n";
+  prompt += "CONOCIMIENTO DE LA EMPRESA:\n" + COMPANY_KNOWLEDGE + "\n\n";
+  prompt += mamparas.MAMPARAS_GUIA + "\n\n";
+  prompt += "REGLAS DE RESPUESTA:\n";
+  prompt += "- Trato: SIEMPRE de USTED al cliente. Nunca tutear.\n";
+  prompt += "- Tono: profesional y cálido, como un asesor argentino de confianza.\n";
+  prompt += "- NO repitas 'Perfecto' ni 'Excelente'. Variá con: 'Anotado', 'Entendido', 'Muy bien', 'Por supuesto'.\n";
+  prompt += "- NUNCA inventes información técnica. Si no sabés, decile 'Lo consulto con el área técnica y le confirmo'.\n";
+  prompt += "- NUNCA dar precios por mensaje. Siempre ofrecé armar un presupuesto formal.\n";
+  prompt += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho o el alto?'\n";
+  prompt += "- MATERIAL: Si el cliente pide cotizar aberturas y no aclaró si las quiere de ALUMINIO o de PVC, preguntáselo como parte de los datos.\n";
+  prompt += "- PUERTAS PLEGADIZAS: Si mencionan una puerta plegadiza/plegable/fuelle sin detalles, primero preguntá el uso y las medidas del vano antes de negar o confirmar (ver conocimiento de la empresa).\n";
+  prompt += "- LÍNEAS Y MARCAS: NUNCA afirmes que NO trabajamos una línea o producto salvo que el conocimiento lo indique explícitamente. Si mencionan una línea que no figura en el conocimiento, respondé 'Lo consulto con el área técnica y le confirmo'. NUNCA atribuyas una línea a otra marca (ej: Europa 60 y Novissima son de FLAMIA, no de REHAU).\n";
+  prompt += "- RETIRO DE ABERTURAS EXISTENTES Y ALBAÑILERÍA: NO hacemos albañilería. El retiro/desmonte de la abertura existente NO está incluido en la instalación: se evalúa y se cotiza aparte según la mano de obra. Si requiere romper o reparar muro, lo resuelve el cliente con un albañil. NUNCA digas que 'retiramos la abertura existente' ni que está incluido.\n";
+  prompt += "- ALCANCE DE SERVICIOS: NUNCA afirmes que un trabajo está incluido en la instalación o en el presupuesto si no figura explícitamente en el conocimiento. Ante la duda, respondé 'Lo consulto con el área técnica y le confirmo'.\n";
+  prompt += "- FORMATO: Texto plano de WhatsApp. NUNCA uses markdown ni dobles asteriscos (**palabra**). Si necesitás resaltar algo, usá un solo asterisco (*palabra*), que es la negrita de WhatsApp, o directamente no resaltes.\n";
+  prompt += "- Si el cliente pregunta por un producto, explicar brevemente y pedir los datos para cotizar.\n";
+  prompt += "- Si el cliente ya dio los datos para cotizar, confirmar que se va a preparar el presupuesto en hasta 72 hs hábiles.\n";
+  prompt += "- Si preguntan por plazos, dar los rangos generales según el material y color.\n";
+  prompt += "- Invitar al cliente a visitar el showroom cuando sea apropiado.\n";
+  prompt += "- ENVÍO DE PLANOS/CROQUIS/FOTOS PARA COTIZAR: SIEMPRE sugerir PRIMERO que los envíe por este mismo chat de WhatsApp (es Ventas). Solo si insiste en correo, indicar ventas@aberturaswindows.com.ar. NUNCA dar el mail medicionesyservicios@ para envío de planos o cotizaciones (ese es solo para coordinar mediciones de obra y servicios post-venta).\n";
+  prompt += "- BÚSQUEDAS LABORALES / CV: Si preguntan por trabajo o búsquedas laborales, invitá a adjuntar el CV por este mismo canal, o si prefiere por correo a msoriano@aberturaswindows.com.ar. Si adjunta un CV, agradecé e informá que lo estaremos analizando y que en caso de avanzar nos comunicaremos con usted. NO pidas datos de cotización, NO derives a ventas y NO prometas plazos de respuesta.\n";
+  prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
+  prompt += "- Si el cliente envió un mensaje de voz, respondé normalmente y preguntá en qué le podés ayudar.\n";
+  prompt += "- Si el cliente consulta por servicio de carpintería/post-venta, seguí el protocolo de verificación de obra propia.\n";
+  prompt += "- Respuestas breves: 2-3 oraciones máximo.\n\n";
+  prompt += "La hora actual en Argentina es las " + argHour + '. Si saludas, usa "' + timeInfo.greeting + '".\n';
+  prompt += "El cliente " + contact.name + " te contacto por " + (channelLabels[contact.channel] || contact.channel) + ".\n";
+  prompt += "Area actual: " + dept.label + ".\n\n";
+  prompt += "Historial de la conversacion:\n" + history + "\n\n";
+  prompt += "Genera UNA respuesta breve para el ultimo mensaje del cliente. Solo la respuesta, sin explicaciones ni prefijos.";
+
+  // VISION: adjuntar fotos recientes del cliente para que la sugerencia
+  // pueda analizarlas (nunca decir que "no puede ver imagenes").
+  var sugImageBlocks = buildImageBlocks(messages, "sugerencia para " + contact.name);
+  var sugContent = sugImageBlocks.length > 0
+    ? sugImageBlocks.concat([{ type: "text", text: prompt + "\nEl cliente envio " + sugImageBlocks.length + " foto(s) adjunta(s): analizalas y usalas para la sugerencia (ej: si se ve el bano, identifica banera vs ducha y hueco frontal/esquinero)." }])
+    : prompt;
+
+  try {
+    var res = await callAnthropic({
+      model: "claude-sonnet-4-6",
+      max_tokens: 300,
+      messages: [{ role: "user", content: sugContent }]
+    });
+
+    return res.data.content && res.data.content[0] ? res.data.content[0].text : "No se pudo generar una sugerencia.";
+  } catch (err) {
+    console.error("Error generando sugerencia:", err.message);
+    return "Error al conectar con la IA. Intenta de nuevo.";
+  }
+}
+
+async function generateAutoReply(contact, messages) {
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { reply: null, stageChange: null, resumen: null };
+
+  // NUEVO: Si Claudia esta pausada para este contacto (un agente tomo el control), no responder
+  if (contact.ai_paused) {
+    console.log("[CLAUDIA] Pausada para " + contact.name + " (un agente tomo el control). No se genera respuesta automatica.");
+    return { reply: null, stageChange: null, resumen: null };
+  }
+
+  var stage = contact.conversation_stage || "consulta";
+
+  // Si la conversacion ya fue cerrada (ganada/perdida/sin_respuesta), no responder.
+  // Pero SI sigue respondiendo en "datos_completos" porque el cliente puede tener mas consultas
+  // despues de haber pasado todos los datos (plazos, colores, aclaraciones, etc.)
+  if (stage === "cerrado_ganado" || stage === "cerrado_perdido" || stage === "sin_respuesta") {
+    return { reply: null, stageChange: null, resumen: null };
+  }
+
+  var dept = DEPARTMENTS[contact.department] || DEPARTMENTS.ventas;
+  var lastMessages = messages.slice(-15);
+  var history = lastMessages.map(function(m) {
+    return formatMessageForHistory(m);
+  }).join("\n");
+
+  var channelLabels = {
+    whatsapp: "WhatsApp", instagram: "Instagram", facebook: "Facebook Messenger",
+    email: "Email", telefono: "Telefono"
+  };
+
+  var timeInfo = getArgentinaTime();
+  var now = new Date();
+  var argHour = now.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" });
+
+  var stageInstructions = "";
+
+  if (stage === "consulta" || stage === "recopilando_datos") {
+    stageInstructions = "ETAPA ACTUAL: Recopilando datos para cotizacion.\n";
+    stageInstructions += "DATOS QUE NECESITAS PARA COTIZAR:\n";
+    for (var i = 0; i < QUOTE_DATA_FIELDS.length; i++) {
+      stageInstructions += "- " + QUOTE_DATA_FIELDS[i] + "\n";
+    }
+    stageInstructions += "\nINSTRUCCIONES DE ETAPA:\n";
+    stageInstructions += "- Respondé la consulta del cliente de forma natural.\n";
+    stageInstructions += "- Si el cliente está interesado en cotizar, pedile TODOS los datos faltantes en UN SOLO mensaje, listados con viñetas de forma clara y ordenada. No fragmentes la solicitud de datos en varios mensajes.\n";
+    stageInstructions += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho (medida horizontal) o el alto (medida vertical)?' Nunca asumas una convención.\n";
+    stageInstructions += "- MATERIAL: Si el cliente no aclaró si quiere las aberturas de ALUMINIO o de PVC, preguntáselo como parte de los datos. NO consideres los datos completos sin saber el material (salvo que sea un producto donde no aplica, ej: mamparas, deck, cortinas).\n";
+    stageInstructions += "- PUERTAS PLEGADIZAS: Si el cliente menciona una puerta plegadiza/plegable/fuelle sin dar detalles, PRIMERO preguntá para qué espacio la necesita y las medidas del vano, antes de negar o confirmar (ver conocimiento de la empresa).\n";
+    stageInstructions += "- RETIRO DE ABERTURA EXISTENTE: Si el cliente menciona que tiene una abertura vieja/existente para sacar, aclarale que el retiro NO está incluido en la instalación, que se evalúa y se cotiza aparte según la mano de obra, y que no hacemos albañilería. Anotalo en las notas del resumen. No lo trates como un dato obligatorio para cotizar.\n";
+    stageInstructions += "- Si el cliente ya proporcionó TODOS los datos necesarios, confirmá que se va a preparar el presupuesto en hasta 72 hs hábiles.\n";
+    stageInstructions += "- NO repitas datos que el cliente ya proporcionó en mensajes anteriores.\n";
+    stageInstructions += "- Si el cliente consulta por servicio de carpintería/reparación, seguí el protocolo de servicio post-venta: verificar que sea obra nuestra, informar sobre visita técnica fuera de garantía ($85.000 IVA inc., se descuenta si contrata el servicio).\n";
+    stageInstructions += "- Si la consulta es por TRABAJO o búsquedas laborales (no es un cliente): NO pidas datos de cotización. Invitá a adjuntar el CV por este canal o enviarlo a msoriano@aberturaswindows.com.ar, y si lo adjunta, agradecé e informá que lo estaremos analizando. Mantené stage_assessment en 'continuar'.\n";
+  } else if (stage === "presupuesto_enviado" || stage === "seguimiento") {
+    stageInstructions = "ETAPA ACTUAL: Seguimiento de presupuesto.\n";
+    stageInstructions += "Seguimiento numero: " + ((contact.followup_count || 0) + 1) + " de 5.\n";
+    stageInstructions += "INSTRUCCIONES DE ETAPA:\n";
+    stageInstructions += "- El cliente ya recibio un presupuesto de nuestra empresa.\n";
+    stageInstructions += "- Hace un seguimiento amable y profesional.\n";
+    stageInstructions += "- Pregunta si pudo revisar el presupuesto y si tiene alguna consulta.\n";
+    stageInstructions += "- Si el cliente dice que NO va a hacer el trabajo con nosotros, agradece y preguntale el motivo ofreciendo estas opciones:\n";
+    stageInstructions += '  1) "El presupuesto excedia mi presupuesto" (Precio)\n';
+    stageInstructions += '  2) "Elegi otra empresa" (Competencia)\n';
+    stageInstructions += '  3) "Los tiempos de entrega no me servian" (Plazos)\n';
+    stageInstructions += '  4) "La obra se postergo o cancelo" (Obra pausada)\n';
+    stageInstructions += '  5) "Otro motivo"\n';
+    stageInstructions += "- Si el cliente confirma que SI va a hacer el trabajo, felicitalo y decile que un asesor se va a comunicar para coordinar los proximos pasos.\n";
+    stageInstructions += "- Respuesta breve: 2-3 oraciones.\n";
+  } else if (stage === "datos_completos") {
+    stageInstructions = "ETAPA ACTUAL: Datos completos - Esperando armado de presupuesto.\n";
+    stageInstructions += "INSTRUCCIONES DE ETAPA:\n";
+    stageInstructions += "- El cliente YA dio todos los datos necesarios para cotizar. NO vuelvas a pedirle datos.\n";
+    stageInstructions += "- Un asesor humano esta armando el presupuesto (hasta 72 hs habiles).\n";
+    stageInstructions += "- Si el cliente pregunta por el estado, confirmale que se esta preparando.\n";
+    stageInstructions += "- Si hace consultas adicionales (plazos, colores, terminaciones, productos, proceso), respondele normalmente con la informacion de la empresa.\n";
+    stageInstructions += "- Si el cliente AGREGA O MODIFICA datos (cambia medidas, color, producto, etc.), confirma el cambio y avisale que el asesor lo tendra en cuenta en el presupuesto.\n";
+    stageInstructions += "- Si el cliente dice que ya no quiere continuar, marcalo como cliente_rechaza.\n";
+    stageInstructions += "- Si el cliente confirma que quiere contratar, marcalo como cliente_acepta.\n";
+    stageInstructions += "- Respuestas breves: 2-3 oraciones maximo.\n";
+  }
+
+  var prompt = "Sos Claudia, la asistente virtual de atencion al cliente de Aberturas Windows.\n\n";
+  prompt += CLAUDIA_PERSONA + "\n\n";
+  prompt += "CONOCIMIENTO DE LA EMPRESA:\n" + COMPANY_KNOWLEDGE + "\n\n";
+  prompt += mamparas.MAMPARAS_GUIA + "\n\n";
+  var catalogoYaEnviado = catalogos.catalogoMamparasEnHistorial(messages);
+  prompt += "CATALOGO DE MAMPARAS (PDF):\n";
+  if (catalogoYaEnviado) {
+    prompt += "- El catalogo de mamparas YA le fue enviado a este cliente. NO lo vuelvas a enviar (enviar_catalogo_mamparas siempre false). Si no encuentra el modelo, invitalo a revisar el catalogo que se le envio y asesoralo.\n\n";
+  } else {
+    prompt += "- Si el cliente consulta por mamparas y todavia NO sabe que modelo quiere (no nombro un modelo, pregunta que modelos hay, pide ver opciones/fotos, o no tiene claro cual le conviene), pone enviar_catalogo_mamparas en true. El sistema le manda el catalogo en PDF automaticamente justo despues de tu mensaje.\n";
+    prompt += "- En ese caso tu reply debe decir que le envias el catalogo para que vea los modelos (ej: 'Le envio el catalogo de mamparas para que vea los modelos'), y podes sumar una pregunta para orientarlo (banera o ducha, frontal o esquinero). NO pegues links ni digas que lo adjuntas vos.\n";
+    prompt += "- Si el cliente ya nombro un modelo concreto o la consulta no es de mamparas, enviar_catalogo_mamparas va en false.\n\n";
+  }
+  if (mamparas.cotizacionDirectaHabilitada(contact)) {
+    prompt += "COTIZACION DE MAMPARAS (MODO PRUEBA ACTIVO PARA ESTE CLIENTE):\n";
+    prompt += "- Para MAMPARAS (y solo mamparas) este cliente recibe la cotizacion al instante: el SISTEMA calcula el precio y lo envia automaticamente justo despues de tu mensaje.\n";
+    prompt += "- Cuando tengas todos los datos de la mampara (modelo Glassic, ancho y alto en cm, cristal, y si la obra esta o no en el Gran Mendoza), marca datos_completos e inclui la mampara en resumen.aberturas con modelo, cristal, ancho_cm, alto_cm y cantidad, y gran_mendoza en Si o No.\n";
+    prompt += "- En ese mensaje decile que a continuacion le envias la cotizacion (ej: 'Perfecto, ya tengo todo. A continuacion le paso la cotizacion.'). NO digas que se prepara en 72 hs y NO escribas ningun numero ni precio vos: los precios los manda el sistema.\n";
+    prompt += "- Si no sabe si la obra esta en el Gran Mendoza, preguntaselo ANTES de marcar datos_completos (sin ese dato no se puede cotizar).\n";
+    prompt += "- Para cualquier otro producto (aberturas, etc.) sigue rigiendo: NUNCA dar precios, se arma un presupuesto formal.\n\n";
+  }
+  prompt += stageInstructions + "\n";
+  prompt += "REGLAS GENERALES:\n";
+  prompt += "- Trato: SIEMPRE de USTED al cliente. Nunca tutear.\n";
+  prompt += "- Tono: profesional y cálido, como un asesor argentino de confianza.\n";
+  prompt += "- NO repitas 'Perfecto' ni 'Excelente'. Variá con: 'Anotado', 'Entendido', 'Muy bien', 'Por supuesto'.\n";
+  prompt += "- NUNCA inventes información técnica. Si no sabés, decile 'Lo consulto con el área técnica y le confirmo'.\n";
+  prompt += "- NUNCA dar precios por mensaje (salvo la excepcion de MODO PRUEBA de mamparas, donde el precio lo envia el sistema, no vos). Siempre ofrecé armar un presupuesto formal.\n";
+  prompt += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho o el alto?'\n";
+  prompt += "- MATERIAL: Si el cliente pide cotizar aberturas y no aclaró si las quiere de ALUMINIO o de PVC, preguntáselo como parte de los datos.\n";
+  prompt += "- PUERTAS PLEGADIZAS: Si mencionan una puerta plegadiza/plegable/fuelle sin detalles, primero preguntá el uso y las medidas del vano antes de negar o confirmar (ver conocimiento de la empresa).\n";
+  prompt += "- LÍNEAS Y MARCAS: NUNCA afirmes que NO trabajamos una línea o producto salvo que el conocimiento lo indique explícitamente. Si mencionan una línea que no figura en el conocimiento, respondé 'Lo consulto con el área técnica y le confirmo'. NUNCA atribuyas una línea a otra marca (ej: Europa 60 y Novissima son de FLAMIA, no de REHAU).\n";
+  prompt += "- RETIRO DE ABERTURAS EXISTENTES Y ALBAÑILERÍA: NO hacemos albañilería. El retiro/desmonte de la abertura existente NO está incluido en la instalación: se evalúa y se cotiza aparte según la mano de obra. Si requiere romper o reparar muro, lo resuelve el cliente con un albañil. NUNCA digas que 'retiramos la abertura existente' ni que está incluido.\n";
+  prompt += "- ALCANCE DE SERVICIOS: NUNCA afirmes que un trabajo está incluido en la instalación o en el presupuesto si no figura explícitamente en el conocimiento. Ante la duda, respondé 'Lo consulto con el área técnica y le confirmo'.\n";
+  prompt += "- FORMATO: Texto plano de WhatsApp. NUNCA uses markdown ni dobles asteriscos (**palabra**). Si necesitás resaltar algo, usá un solo asterisco (*palabra*), que es la negrita de WhatsApp, o directamente no resaltes.\n";
+  prompt += "- ENVÍO DE PLANOS/CROQUIS/FOTOS PARA COTIZAR: SIEMPRE sugerir PRIMERO que los envíe por este mismo chat de WhatsApp (es Ventas). Solo si insiste en correo, indicar ventas@aberturaswindows.com.ar. NUNCA dar el mail medicionesyservicios@ para envío de planos o cotizaciones (ese es solo para coordinar mediciones de obra y servicios post-venta).\n";
+  prompt += "- BÚSQUEDAS LABORALES / CV: Si preguntan por trabajo o búsquedas laborales, invitá a adjuntar el CV por este mismo canal, o si prefiere por correo a msoriano@aberturaswindows.com.ar. Si adjunta un CV, agradecé e informá que lo estaremos analizando y que en caso de avanzar nos comunicaremos con usted. NO pidas datos de cotización, NO derives a ventas y NO prometas plazos de respuesta.\n";
+  prompt += "- Respuestas breves: 2-3 oraciones máximo.\n";
+  prompt += "- Si es una respuesta a una historia de Instagram, ser breve y conectar con lo que muestra la historia.\n";
+  prompt += "- Si el cliente envió un mensaje de voz, respondé normalmente y preguntá en qué le podés ayudar.\n\n";
+  prompt += "La hora actual en Argentina es las " + argHour + '. Si saludas, usa "' + timeInfo.greeting + '".\n';
+  prompt += "El cliente " + contact.name + " te contacto por " + (channelLabels[contact.channel] || contact.channel) + ".\n\n";
+  prompt += "Historial de la conversacion:\n" + history + "\n\n";
+  prompt += 'Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato:\n';
+  prompt += '{"reply":"tu respuesta al cliente","stage_assessment":"consulta|recopilando_datos|datos_completos|cliente_acepta|cliente_rechaza|continuar","resumen":null,"enviar_catalogo_mamparas":false}\n';
+  prompt += 'enviar_catalogo_mamparas: true SOLO cuando corresponda enviar el catalogo de mamparas (ver CATALOGO DE MAMPARAS); en cualquier otro caso false.\n';
+  prompt += '\nDonde stage_assessment es:\n';
+  prompt += '- "consulta": el cliente recien consulta, no pidio cotizacion aun\n';
+  prompt += '- "recopilando_datos": el cliente esta interesado y estamos pidiendo/recibiendo datos\n';
+  prompt += '- "datos_completos": el cliente ya dio TODOS los datos necesarios para cotizar\n';
+  prompt += '- "cliente_acepta": el cliente confirma que va a hacer el trabajo con nosotros\n';
+  prompt += '- "cliente_rechaza": el cliente dice que NO va a hacer el trabajo\n';
+  prompt += '- "continuar": seguir en la etapa actual sin cambios\n';
+  prompt += '\nNOTA: Si la conversacion es una consulta LABORAL (busqueda de trabajo / envio de CV), usa siempre "continuar" y deja resumen como null.\n';
+  prompt += '\nIMPORTANTE - FICHA RESUMEN:\n';
+  prompt += 'Cuando stage_assessment sea "datos_completos", DEBES incluir el campo "resumen" con los datos recopilados, con cada abertura como objeto separado y medidas en CENTÍMETROS como enteros:\n';
+  prompt += '{"reply":"tu respuesta","stage_assessment":"datos_completos","resumen":{"nombre":"nombre y apellido","telefono":"numero o No indicado","instalacion":"Si/No","direccion":"direccion de la obra o No requiere instalacion","material":"Aluminio o PVC o No indicado (material de las aberturas; si el pedido no lleva perfileria, ej mamparas o deck, usa No aplica)","tiene_plano":"Si/No","color":"color elegido o No indicado","vidrio":"DVH o Simple o No indicado","aberturas":[{"tipo":"corrediza/de abrir/mampara/etc","material":"Aluminio/PVC/No aplica","modelo":"solo para mamparas: nombre del modelo Glassic (ej Box Frontal, Open Pivot, Blindex) o null","cristal":"solo para mamparas: incoloro/color/textura/saten o null","ancho_cm":120,"alto_cm":80,"cantidad":1}],"gran_mendoza":"Si/No/No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)","notas":"datos adicionales o vacio (si el cliente tiene una abertura existente para retirar, indicalo aca, ej: Tiene ventana de madera existente para retirar - evaluar y cotizar desmonte aparte)"}}\n';
+  prompt += 'REGLAS para aberturas: ancho_cm y alto_cm son INTEGER en centímetros (si el cliente dijo 1.20m, convertí a 120). Si no se sabe un valor, usá null. Si no se indicaron medidas, aberturas es []. El campo material DEBE especificar si las aberturas son de Aluminio o de PVC, tanto a nivel general como en cada abertura (si el cliente pidio materiales distintos para distintas aberturas, indicalo en cada una).\n';
+  prompt += 'Si stage_assessment NO es "datos_completos", deja resumen como null.\n';
+
+  // VISION: si el cliente mando fotos recientes, se adjuntan para que Claudia
+  // las analice de verdad (ej: foto del bano -> detectar banera vs ducha,
+  // hueco frontal vs esquinero, y asesorar sin preguntar lo obvio).
+  var imageBlocks = buildImageBlocks(messages, "auto-reply para " + contact.name);
+  var userContent;
+  if (imageBlocks.length > 0) {
+    prompt += '\nEl cliente envio ' + imageBlocks.length + ' foto(s) adjunta(s) en esta conversacion. ANALIZALAS: si se ve el bano, identifica si tiene BANERA o DUCHA/receptaculo, si el hueco es frontal o esquinero, y usa esa informacion para asesorar directamente SIN preguntar lo que ya se ve en la foto. Si algo no se distingue con claridad, ahi si pregunta. Si la imagen es un CV (curriculum vitae), NO analices su contenido en la respuesta: solo agradece el envio e informa que lo estaremos analizando y que en caso de avanzar nos comunicaremos.\n';
+    userContent = imageBlocks.concat([{ type: "text", text: prompt }]);
+  } else {
+    userContent = prompt;
+  }
+
+  try {
+    var res = await callAnthropic({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1500,
+      messages: [{ role: "user", content: userContent }]
+    });
+
+    var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
+    try {
+      var parsed = JSON.parse(text);
+      var reply = parsed.reply || null;
+      var assessment = parsed.stage_assessment || "continuar";
+      var resumen = parsed.resumen || null;
+      var enviarCatalogo = parsed.enviar_catalogo_mamparas === true && !catalogoYaEnviado;
+
+      var stageChange = null;
+      if (assessment === "datos_completos" && stage !== "datos_completos") {
+        stageChange = "datos_completos";
+      } else if (assessment === "recopilando_datos" && stage === "consulta") {
+        stageChange = "recopilando_datos";
+      } else if (assessment === "cliente_acepta") {
+        stageChange = "cerrado_ganado";
+      } else if (assessment === "cliente_rechaza") {
+        stageChange = "cerrado_perdido";
+      }
+
+      return { reply: reply, stageChange: stageChange, resumen: resumen, enviarCatalogoMamparas: enviarCatalogo };
+    } catch (parseErr) {
+      // NUNCA mandar el JSON crudo al cliente. Intentamos rescatar solo el campo reply;
+      // si no se puede, mejor no responder nada.
+      console.error("[CLAUDIA] Respuesta no parseable (posible truncamiento). Largo: " + text.length);
+      var rescued = null;
+      var mm = text.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (mm) {
+        try { rescued = JSON.parse('"' + mm[1] + '"'); } catch (e2) { rescued = null; }
+      }
+      return { reply: rescued, stageChange: null, resumen: null };
+    }
+  } catch (err) {
+    console.error("Error generando auto-reply:", err.message);
+    return { reply: null, stageChange: null, resumen: null };
+  }
+}
+
+async function generateFollowup(contact, messages) {
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  var followupNum = (contact.followup_count || 0) + 1;
+  var lastMessages = messages.slice(-10);
+  var history = lastMessages.map(function(m) {
+    return formatMessageForHistory(m);
+  }).join("\n");
+
+  var timeInfo = getArgentinaTime();
+
+  var prompt = "Sos Claudia, la asistente virtual de atencion al cliente de Aberturas Windows.\n\n";
+  prompt += CLAUDIA_PERSONA + "\n\n";
+  prompt += "El cliente " + contact.name + " recibio un presupuesto pero no respondio.\n";
+  prompt += "Este es el seguimiento numero " + followupNum + " de 5.\n\n";
+  prompt += "Historial reciente:\n" + history + "\n\n";
+  prompt += "REGLAS:\n";
+  prompt += "- Tono: formal pero relajado, profesional, amable. Trato SIEMPRE de USTED, nunca tutear.\n";
+  prompt += "- Mensaje breve de seguimiento (2-3 oraciones).\n";
+  prompt += "- NO seas insistente ni presiones.\n";
+  prompt += "- NO repitas 'Perfecto' ni 'Excelente'.\n";
+  prompt += '- Si saludas, usa "' + timeInfo.greeting + '".\n';
+
+  if (followupNum === 1) {
+    prompt += "- Primer seguimiento: pregunta amablemente si pudo revisar el presupuesto.\n";
+  } else if (followupNum === 2) {
+    prompt += "- Segundo seguimiento: recorda que estamos a disposicion para cualquier consulta sobre el presupuesto.\n";
+  } else if (followupNum === 3) {
+    prompt += "- Tercer seguimiento: ofrece agendar una visita al showroom o una llamada para resolver dudas.\n";
+  } else if (followupNum === 4) {
+    prompt += "- Cuarto seguimiento: menciona que los precios del presupuesto tienen vigencia limitada.\n";
+  } else if (followupNum === 5) {
+    prompt += "- Ultimo seguimiento: agradece el interes, deja la puerta abierta y menciona que puede contactarnos cuando quiera.\n";
+  }
+
+  prompt += "\nGenera SOLO el mensaje de seguimiento, sin explicaciones ni prefijos.";
+
+  try {
+    var res = await callAnthropic({
+      model: "claude-sonnet-4-6",
+      max_tokens: 200,
+      messages: [{ role: "user", content: prompt }]
+    });
+
+    return res.data.content && res.data.content[0] ? res.data.content[0].text : null;
+  } catch (err) {
+    console.error("Error generando followup:", err.message);
     return null;
   }
 }
 
-function handleStatusUpdate(statusEvent) {
-  // Procesa eventos de status de WhatsApp Cloud API (sent/delivered/read/failed).
-  // Los webhooks pueden llegar fuera de orden (read antes que delivered); los guards
-  // WHERE status NOT IN (...) evitan retrocesos de estado.
-  var db = getDb();
+async function generateFicha(contact, messages) {
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  var history = messages.map(function(m) {
+    return formatMessageForHistory(m);
+  }).join("\n");
+
+  var prompt = "Sos un asistente que extrae datos de cotizacion de conversaciones de Aberturas Windows.\n\n";
+  prompt += "A continuacion tenes el historial completo de una conversacion con un cliente.\n";
+  prompt += "Tu tarea es extraer los datos del cliente para armar una ficha de cotizacion.\n\n";
+  prompt += "Historial de la conversacion:\n" + history + "\n\n";
+  prompt += "DATOS A EXTRAER:\n";
+  prompt += "- nombre: nombre y apellido del cliente\n";
+  prompt += "- telefono: numero de telefono (si no aparece, poner 'No indicado')\n";
+  prompt += "- direccion: direccion de la obra (si no requiere instalacion, poner 'No requiere instalacion')\n";
+  prompt += "- producto: que producto quiere cotizar (tipo de abertura, cantidades, etc.)\n";
+  prompt += "- material: Aluminio / PVC / No indicado (material de las aberturas; si el cliente pidio materiales distintos, detallalo, ej 'Aluminio (ventanas) y PVC (puerta)'; si el pedido no lleva perfileria, ej mamparas o deck, poner 'No aplica')\n";
+  prompt += "- plano: Si / No / No indicado\n";
+  prompt += "- color: color de la perfileria elegido (si no lo dijo, 'No indicado')\n";
+  prompt += "- vidrio: DVH / Simple / No indicado\n";
+  prompt += "- medidas: medidas indicadas por el cliente\n";
+  prompt += "- instalacion: Si / No / No indicado\n";
+  prompt += "- gran_mendoza: Si / No / No indicado (la obra esta en Capital, Godoy Cruz, Guaymallen, Las Heras, Maipu o Lujan de Cuyo?)\n";
+  prompt += "- mamparas: SOLO si el cliente pidio mamparas de bano, un array con cada mampara: modelo Glassic (ej Box Frontal, Blindex, Panel, Open Pivot), cristal (incoloro/color/textura/saten), ancho_cm y alto_cm como INTEGER en centimetros, y cantidad. Si no hay mamparas, array vacio [].\n\n";
+  prompt += "Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato EXACTO:\n";
+  prompt += '{"nombre":"...","telefono":"...","direccion":"...","producto":"...","material":"...","plano":"...","color":"...","vidrio":"...","medidas":"...","instalacion":"...","gran_mendoza":"...","mamparas":[{"modelo":"Box Frontal","cristal":"incoloro","ancho_cm":180,"alto_cm":160,"cantidad":1}]}\n';
+  prompt += "Si algun dato no fue mencionado en la conversacion, usa 'No indicado' (o 'No indicada' para direccion/medidas).";
+
   try {
-    var msg = db.prepare("SELECT id, status FROM messages WHERE channel_message_id = ?").get(statusEvent.channelMessageId);
-    if (!msg) {
-      console.log("[STATUS] Mensaje no encontrado: channel_message_id=" + statusEvent.channelMessageId + " (" + statusEvent.status + ")");
-      return;
+    var res = await callAnthropic({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1200,
+      messages: [{ role: "user", content: prompt }]
+    });
+
+    var text = res.data.content && res.data.content[0] ? res.data.content[0].text : "";
+    try {
+      var parsed = JSON.parse(text);
+      return parsed;
+    } catch (parseErr) {
+      console.error("Error parseando ficha:", parseErr.message);
+      return null;
     }
-    var ts = new Date(parseInt(statusEvent.timestamp, 10) * 1000).toISOString();
-    if (statusEvent.status === "read") {
-      db.prepare("UPDATE messages SET status='read', read_at=? WHERE id=?").run(ts, msg.id);
-    } else if (statusEvent.status === "delivered" && msg.status !== 'read') {
-      db.prepare("UPDATE messages SET status='delivered', delivered_at=? WHERE id=?").run(ts, msg.id);
-    } else if (statusEvent.status === "sent" && msg.status !== 'read' && msg.status !== 'delivered') {
-      db.prepare("UPDATE messages SET status='sent', sent_at=? WHERE id=?").run(ts, msg.id);
-    } else if (statusEvent.status === "failed") {
-      db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(statusEvent.error || 'Unknown error', msg.id);
-    }
-    console.log("[STATUS] " + statusEvent.channelMessageId + " -> " + statusEvent.status + " (msg.id=" + msg.id + ")" + (statusEvent.status === "failed" ? " | motivo: " + (statusEvent.error || "desconocido") : ""));
   } catch (err) {
-    console.error("[STATUS] Error:", err.message);
+    console.error("Error generando ficha:", err.message);
+    return null;
   }
 }
 
-async function handleAutoReply(contact, channel) {
-  try {
-    var db = getDb();
-    // MODO PRUEBA mamparas: cotizaciones para enviar al cliente despues del mensaje de Claudia
-    var cotizacionDirecta = mamparas.cotizacionDirectaHabilitada(contact);
-    var cotizacionesCliente = [];
-    var mamparasEnFicha = 0;
-    var messages = db.prepare("SELECT direction, content, media_type, media_url FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(contact.id);
-    var result = await generateAutoReply(contact, messages);
-
-    if (!result.reply) {
-      console.log("[AUTO-REPLY] Sin respuesta para " + contact.name + " (etapa: " + (contact.conversation_stage || "consulta") + (contact.ai_paused ? ", IA pausada" : "") + ")");
-      return;
-    }
-
-    if (result.stageChange) {
-      var updates = { conversation_stage: result.stageChange };
-      if (result.stageChange === "cerrado_perdido") {
-        var lastMsg = db.prepare("SELECT content FROM messages WHERE contact_id = ? AND direction = 'incoming' ORDER BY created_at DESC LIMIT 1").get(contact.id);
-        if (lastMsg) {
-          var reason = await detectLostReason(lastMsg.content);
-          updates.lost_reason = reason;
-        }
-      }
-      var setClauses = [];
-      var setValues = [];
-      var keys = Object.keys(updates);
-      for (var i = 0; i < keys.length; i++) {
-        setClauses.push(keys[i] + " = ?");
-        setValues.push(updates[keys[i]]);
-      }
-      setClauses.push("updated_at = CURRENT_TIMESTAMP");
-      setValues.push(contact.id);
-      db.prepare("UPDATE contacts SET " + setClauses.join(", ") + " WHERE id = ?").run(setValues);
-      console.log("[AUTO-REPLY] Etapa cambiada: " + (contact.conversation_stage || "consulta") + " -> " + result.stageChange + " | " + contact.name);
-
-      if (result.stageChange === "datos_completos") {
-        console.log("[AUTO-REPLY] *** ATENCION: " + contact.name + " tiene todos los datos para cotizar. Armar presupuesto. ***");
-
-        if (result.resumen) {
-          try {
-            var r = result.resumen;
-            var cotizResult = db.prepare("INSERT INTO cotizaciones_datos (contact_id, nombre, telefono, instalacion, direccion, tiene_plano, color, vidrio, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
-              contact.id,
-              r.nombre || null,
-              r.telefono || null,
-              r.instalacion === "Si" ? 1 : 0,
-              r.direccion || null,
-              r.tiene_plano === "Si" ? 1 : 0,
-              r.color || null,
-              r.vidrio || null,
-              r.notas || null
-            );
-            var cotizId = cotizResult.lastInsertRowid;
-            if (Array.isArray(r.aberturas)) {
-              for (var ai = 0; ai < r.aberturas.length; ai++) {
-                var ab = r.aberturas[ai];
-                db.prepare("INSERT INTO cotizaciones_aberturas (cotizacion_datos_id, contact_id, tipo, ancho_cm, alto_cm, cantidad) VALUES (?, ?, ?, ?, ?, ?)").run(
-                  cotizId, contact.id, ab.tipo || null, ab.ancho_cm || null, ab.alto_cm || null, ab.cantidad || 1
-                );
-              }
-            }
-            var fichaTexto = "\u{1F4CB} FICHA PARA COTIZAR\n";
-            fichaTexto += "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n";
-            fichaTexto += "\u{1F464} Nombre: " + (r.nombre || "No indicado") + "\n";
-            fichaTexto += "\u{1F4DE} Tel\u00e9fono: " + (r.telefono || "No indicado") + "\n";
-            fichaTexto += "\u{1F527} Instalaci\u00f3n: " + (r.instalacion || "No indicado") + "\n";
-            fichaTexto += "\u{1F4CD} Direcci\u00f3n: " + (r.direccion || "No indicada") + "\n";
-            fichaTexto += "\u{1F4D0} Plano: " + (r.tiene_plano || "No indicado") + "\n";
-            fichaTexto += "\u{1F3A8} Color: " + (r.color || "No indicado") + "\n";
-            fichaTexto += "\u{1F532} Vidrio: " + (r.vidrio || "No indicado") + "\n";
-            if (Array.isArray(r.aberturas) && r.aberturas.length > 0) {
-              fichaTexto += "\u{1FA9F} Aberturas:\n";
-              for (var fi = 0; fi < r.aberturas.length; fi++) {
-                var fab = r.aberturas[fi];
-                fichaTexto += "   \u2022 " + (fab.tipo || "Abertura") + ": " + (fab.ancho_cm || "?") + " x " + (fab.alto_cm || "?") + " cm";
-                if (fab.cantidad > 1) fichaTexto += " (x" + fab.cantidad + ")";
-                fichaTexto += "\n";
-              }
-            } else {
-              fichaTexto += "\u{1FA9F} Aberturas: No indicadas\n";
-            }
-            if (r.notas) fichaTexto += "\u{1F4DD} Notas: " + r.notas + "\n";
-            fichaTexto += "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501";
-            db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, fichaTexto, channel);
-            console.log("[FICHA] Guardada para " + contact.name + " (cotizacion #" + cotizId + ", " + (Array.isArray(r.aberturas) ? r.aberturas.length : 0) + " aberturas)");
-
-            // MAMPARAS: si la ficha incluye mamparas con modelo y cristal, el sistema
-            // calcula la cotizacion (deterministico, lista L107) y la deja como
-            // mensaje interno para que el VENDEDOR la revise y la envie.
-            // Claudia NUNCA envia el precio al cliente.
-            try {
-              if (Array.isArray(r.aberturas)) {
-                var gm = null;
-                if (typeof r.gran_mendoza === "string") {
-                  var gmTxt = r.gran_mendoza.toLowerCase();
-                  if (gmTxt.indexOf("si") === 0 || gmTxt.indexOf("sí") === 0) gm = true;
-                  else if (gmTxt.indexOf("no indicado") === -1 && gmTxt.indexOf("no") === 0) gm = false;
-                }
-                for (var mi = 0; mi < r.aberturas.length; mi++) {
-                  var ab = r.aberturas[mi];
-                  var esMampara = (ab.tipo && String(ab.tipo).toLowerCase().indexOf("mampara") !== -1) || ab.modelo;
-                  if (esMampara) mamparasEnFicha++;
-                  if (esMampara && ab.modelo && ab.cristal && ab.ancho_cm && ab.alto_cm) {
-                    var cot = mamparas.cotizarMampara({
-                      modelo: ab.modelo,
-                      ancho_cm: ab.ancho_cm,
-                      alto_cm: ab.alto_cm,
-                      cristal: ab.cristal,
-                      gran_mendoza: gm
-                    });
-                    var cotTexto = mamparas.formatearCotizacion(cot);
-                    if (gm === null && cot.ok) {
-                      cotTexto += mamparas.avisoZonaSinConfirmar(cot);
-                    }
-                    if (ab.cantidad > 1 && cot.ok) {
-                      cotTexto += "\n\u{1F522} Cantidad solicitada: " + ab.cantidad + " unidades (el precio es POR UNIDAD).";
-                    }
-                    // MODO PRUEBA: solo si se pudo calcular y la zona esta definida (Si/No)
-                    if (cotizacionDirecta && cot.ok && gm !== null) {
-                      cotizacionesCliente.push(mamparas.formatearCotizacionCliente(cot, ab.cantidad || 1));
-                      cotTexto += "\n\u{1F9EA} MODO PRUEBA: esta cotizacion se envio automaticamente al cliente.";
-                    }
-                    db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, cotTexto, channel);
-                    console.log("[MAMPARAS] Cotizacion " + (cot.ok ? "calculada" : "fallida") + " para " + contact.name + ": " + (cot.ok ? cot.modelo + " " + cot.medidaCotizada : cot.error));
-                  }
-                }
-              }
-            } catch (mampErr) {
-              console.error("[MAMPARAS] Error cotizando:", mampErr.message);
-            }
-          } catch (fichaErr) {
-            console.error("[FICHA] Error guardando ficha:", fichaErr.message);
-          }
-        }
-      }
-    }
-
-    // ANTI-DUPLICADO: si la respuesta generada es identica al ultimo mensaje saliente
-    // reciente de este contacto, no la enviamos de nuevo (ej: cliente mando texto y
-    // archivo separados por mas de 10s y ambos debounce generaron la misma respuesta).
-    if (isDuplicateReply(db, contact.id, result.reply)) {
-      console.log("[ANTI-DUP] Respuesta identica a la ultima enviada a " + contact.name + " hace menos de " + (DUPLICATE_REPLY_WINDOW_MS / 60000) + " min. No se reenvia.");
-      return;
-    }
-
-    var insertResult = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, 'Claudia', 'pending')").run(contact.id, result.reply, channel);
-    var msgId = insertResult.lastInsertRowid;
-
-    var sendResult = await sendChannelMessage(channel, contact.channel_id, contact.phone_line, contact.email, result.reply);
-    if (sendResult.success) {
-      db.prepare("UPDATE messages SET status='sent', sent_at=CURRENT_TIMESTAMP, channel_message_id=? WHERE id=?").run(sendResult.messageId || null, msgId);
-    } else {
-      db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(sendResult.error || 'Unknown error', msgId);
-    }
-    console.log("[CLAUDIA] " + channel.toUpperCase() + " -> " + contact.name + ": " + result.reply.substring(0, 60) + "... | Enviado: " + sendResult.success);
-
-    // MODO PRUEBA mamparas: enviar la(s) cotizacion(es) calculadas por el sistema.
-    // Si habia mamparas pero no se pudo cotizar ninguna (zona sin definir, medida fuera
-    // de rango, modelo no reconocido), avisamos que un asesor la envia.
-    if (cotizacionDirecta && sendResult.success && mamparasEnFicha > 0) {
-      var textosCliente = cotizacionesCliente.length > 0
-        ? cotizacionesCliente
-        : ["Un asesor revisa los datos de su mampara y le envia la cotizacion a la brevedad."];
-      for (var qi = 0; qi < textosCliente.length; qi++) {
-        try {
-          var qIns = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, 'Claudia', 'pending')").run(contact.id, textosCliente[qi], channel);
-          var qRes = await sendChannelMessage(channel, contact.channel_id, contact.phone_line, contact.email, textosCliente[qi]);
-          if (qRes.success) {
-            db.prepare("UPDATE messages SET status='sent', sent_at=CURRENT_TIMESTAMP, channel_message_id=? WHERE id=?").run(qRes.messageId || null, qIns.lastInsertRowid);
-          } else {
-            db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(qRes.error || 'Unknown error', qIns.lastInsertRowid);
-          }
-          console.log("[MAMPARAS] MODO PRUEBA: cotizacion enviada a " + contact.name + " | Enviado: " + qRes.success);
-        } catch (qErr) {
-          console.error("[MAMPARAS] MODO PRUEBA: error enviando cotizacion:", qErr.message);
-        }
-      }
-    }
-
-    // CATALOGO DE MAMPARAS: si Claudia lo pidio (cliente sin modelo definido),
-    // se envia despues de su mensaje. Una sola vez por contacto.
-    if (result.enviarCatalogoMamparas && sendResult.success) {
-      try {
-        await catalogos.enviarCatalogoMamparas(db, contact, channel);
-      } catch (catErr) {
-        console.error("[CATALOGO] Error enviando catalogo:", catErr.message);
-      }
-    }
-  } catch (err) {
-    console.error("[AUTO-REPLY] Error:", err.message);
-  }
+async function detectLostReason(messageText) {
+  var lower = messageText.toLowerCase();
+  if (lower.indexOf("precio") !== -1 || lower.indexOf("caro") !== -1 || lower.indexOf("presupuesto") !== -1 || lower.indexOf("costoso") !== -1 || lower.indexOf("plata") !== -1) return "precio";
+  if (lower.indexOf("otra empresa") !== -1 || lower.indexOf("otro proveedor") !== -1 || lower.indexOf("competencia") !== -1 || lower.indexOf("otro lado") !== -1) return "competencia";
+  if (lower.indexOf("plazo") !== -1 || lower.indexOf("tiempo") !== -1 || lower.indexOf("demora") !== -1 || lower.indexOf("tarda") !== -1 || lower.indexOf("rapido") !== -1) return "plazos";
+  if (lower.indexOf("obra") !== -1 || lower.indexOf("postergo") !== -1 || lower.indexOf("cancelo") !== -1 || lower.indexOf("pauso") !== -1 || lower.indexOf("freno") !== -1) return "obra_pausada";
+  return "otro";
 }
 
-async function handleIncomingMessage(normalized) {
-  var db = getDb();
-  try {
-    // DEDUPE ENTRANTE: Meta puede reintentar el mismo webhook (misma entrega dos veces).
-    // Si ya guardamos un mensaje entrante con este channel_message_id, lo ignoramos
-    // por completo (no se guarda de nuevo ni dispara auto-reply).
-    if (normalized.messageId) {
-      var yaExiste = db.prepare("SELECT id FROM messages WHERE channel_message_id = ? AND direction = 'incoming' LIMIT 1").get(normalized.messageId);
-      if (yaExiste) {
-        console.log("[DEDUPE] Webhook repetido ignorado (channel_message_id=" + normalized.messageId + ")");
-        var contactoExistente = db.prepare("SELECT * FROM contacts WHERE channel = ? AND channel_id = ?").get(normalized.channel, normalized.channelId);
-        return { contact: contactoExistente || null, classification: null, duplicated: true };
-      }
-    }
+function classifyByKeywords(text) {
+  var lower = text.toLowerCase();
+  var rules = {
+    ventas: ["precio", "cotizacion", "presupuesto", "comprar", "costo", "descuento", "oferta", "contratar", "producto", "catalogo", "promocion", "cuanto sale", "interesado", "abertura", "ventana", "puerta", "aluminio", "pvc", "dvh", "vidrio", "corrediza", "plegadiza", "plegable", "fuelle", "cerramiento", "mampara", "persiana", "mosquitero", "porton", "baranda", "toldo", "cortina", "revestimiento", "siding", "deck", "piso", "spc", "wpc", "parasol", "cerco", "griferia", "canadian"],
+    soporte: ["no funciona", "error", "problema", "tecnico", "falla", "ayuda", "configurar", "instalar", "medicion", "colocacion", "fabricacion", "cuando esta", "estado", "pedido", "entrega", "servicio", "reparacion", "carpinteria", "visita tecnica"],
+    admin: ["factura", "pago", "cobro", "recibo", "cuit", "datos fiscales", "transferencia", "suscripcion", "vencimiento", "comprobante"],
+    reclamos: ["reclamo", "queja", "insatisfecho", "mal servicio", "devolver", "reembolso", "devolucion", "pesimo", "inaceptable", "denuncia", "enojado"]
+  };
 
-    if (normalized._needsDownload) {
-      await downloadMediaIfNeeded(normalized);
+  var best = "ventas";
+  var bestCount = 0;
+  var depts = Object.keys(rules);
+  for (var i = 0; i < depts.length; i++) {
+    var deptKey = depts[i];
+    var keywords = rules[deptKey];
+    var count = 0;
+    for (var j = 0; j < keywords.length; j++) {
+      if (lower.indexOf(keywords[j]) !== -1) count++;
     }
-
-    if (normalized.mediaType === "audio" && normalized.mediaUrl) {
-      var transcription = await transcribeAudio(normalized.mediaUrl);
-      if (transcription) {
-        normalized.text = transcription;
-        normalized._transcribed = true;
-        console.log("[AUDIO] Transcripcion exitosa para mensaje de " + (normalized.senderName || "desconocido"));
-      }
-    }
-
-    var contact = db.prepare("SELECT * FROM contacts WHERE channel = ? AND channel_id = ?").get(normalized.channel, normalized.channelId);
-    var isNewContact = false;
-    if (!contact) {
-      var result = db.prepare("INSERT INTO contacts (name, phone, email, channel, channel_id, phone_line, department, status, origin, conversation_stage) VALUES (?, ?, ?, ?, ?, ?, 'ventas', 'lead', ?, 'consulta')").run(normalized.senderName || "Contacto nuevo", normalized.senderPhone || null, normalized.senderEmail || null, normalized.channel, normalized.channelId, normalized.phoneLine || null, normalized.channel);
-      contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(result.lastInsertRowid);
-      isNewContact = true;
-    }
-    if (contact && (isNewContact || profilePicture.isStale(contact.profile_picture_updated_at))) {
-      var cid = contact.id, ch = contact.channel, cuid = contact.channel_id;
-      setImmediate(function(){ profilePicture.fetchAndSaveProfilePicture(cid, ch, cuid); });
-    }
-    if (contact && normalized.senderName && normalized.senderName !== contact.name && contact.name.match(/^\d{10,}$/)) {
-      db.prepare("UPDATE contacts SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(normalized.senderName, contact.id);
-      contact.name = normalized.senderName;
-    }
-
-    var stage = contact.conversation_stage || "consulta";
-    if (stage === "presupuesto_enviado" || stage === "seguimiento" || stage === "sin_respuesta") {
-      db.prepare("UPDATE contacts SET conversation_stage = 'seguimiento', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(contact.id);
-      contact.conversation_stage = "seguimiento";
-    }
-    if (stage === "cerrado_perdido" || stage === "cerrado_ganado") {
-      contact.conversation_stage = stage;
-    }
-
-    var contentToSave = normalized.text;
-    if (normalized._transcribed && normalized.mediaType === "audio") {
-      contentToSave = normalized.text;
-    }
-
-    // reply_to_message_id: WhatsApp/IG/FB envian el wamid del mensaje citado en context.
-    // Lo guardamos tal cual (es el mismo formato que channel_message_id), para que el
-    // self-JOIN de /contacts/:id/messages pueda resolver la cita.
-    var replyToWamid = normalized.replyToMessageId || null;
-    var insertedMsg = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, channel_message_id, media_type, media_url, story_url, reply_to_message_id) VALUES (?, 'incoming', ?, ?, ?, ?, ?, ?, ?)").run(contact.id, contentToSave, normalized.channel, normalized.messageId, normalized.mediaType || null, normalized.mediaUrl || null, normalized.storyUrl || null, replyToWamid);
-    if (normalized.originalFilename) {
-      try { db.prepare("UPDATE messages SET original_filename = ? WHERE id = ?").run(normalized.originalFilename, insertedMsg.lastInsertRowid); } catch(e) {}
-    }
-    db.prepare("UPDATE contacts SET is_unread = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(contact.id);
-
-    var textForAi = normalized.text || "";
-    if (normalized.storyUrl) { textForAi = "[Respuesta a historia de Instagram] " + textForAi; }
-    if (normalized.mediaType === "audio" && !normalized._transcribed) { textForAi = textForAi || "[El cliente envio un mensaje de audio]"; }
-    var recentMessages = db.prepare("SELECT direction, content FROM messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT 10").all(contact.id).reverse();
-    var classification = await classifyMessage(textForAi, recentMessages);
-    if (classification.department !== contact.department) {
-      db.prepare("UPDATE contacts SET department = ?, ai_confidence = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(classification.department, classification.confidence, contact.id);
-      db.prepare("INSERT INTO routing_log (contact_id, from_department, to_department, reason, confidence) VALUES (?, ?, ?, ?, ?)").run(contact.id, contact.department, classification.department, classification.reason, classification.confidence);
-    }
-
-    console.log("[" + normalized.channel.toUpperCase() + "] " + normalized.senderName + ": " + (normalized.text || "").substring(0, 50) + (normalized.mediaType ? " [" + normalized.mediaType + (normalized._transcribed ? " transcripto" : "") + "]" : "") + " -> " + classification.department + " (" + classification.confidence + ") | Etapa: " + (contact.conversation_stage || "consulta") + (contact.ai_paused ? " | IA PAUSADA" : ""));
-
-    if (isAutoReplyEnabled(normalized.channel)) {
-      var cId = contact.id;
-      var cChannel = normalized.channel;
-      if (debounceTimers[cId]) {
-        clearTimeout(debounceTimers[cId]);
-        console.log("[DEBOUNCE] Timer reiniciado para contacto " + cId);
-      }
-      debounceTimers[cId] = setTimeout(function() {
-        delete debounceTimers[cId];
-        var freshDb = getDb();
-        var freshContact = freshDb.prepare("SELECT * FROM contacts WHERE id = ?").get(cId);
-        if (freshContact && !freshContact.ai_paused) {
-          enqueueAutoReply(freshContact, cChannel);
-        }
-      }, 10000);
-    }
-
-    return { contact: contact, classification: classification };
-  } catch (err) {
-    console.error("Error procesando mensaje entrante:", err);
-    throw err;
+    if (count > bestCount) { bestCount = count; best = deptKey; }
   }
+
+  var confidence = bestCount >= 3 ? "alta" : bestCount >= 1 ? "media" : "baja";
+  var reason = bestCount > 0 ? "Clasificado por keywords (IA no disponible)" : "Sin keywords detectadas, asignado a ventas por defecto";
+
+  return { department: best, confidence: confidence, reason: reason };
 }
 
-router.get("/meta", function(req, res) {
-  var mode = req.query["hub.mode"];
-  var token = req.query["hub.verify_token"];
-  var challenge = req.query["hub.challenge"];
-  if (mode === "subscribe" && token === process.env.META_VERIFY_TOKEN) {
-    console.log("Webhook de Meta verificado");
-    return res.status(200).send(challenge);
-  }
-  return res.sendStatus(403);
-});
-
-router.post("/meta", async function(req, res) {
-  res.sendStatus(200);
-  try {
-    var body = req.body;
-    var object = body.object;
-    var normalized = null;
-    if (object === "whatsapp_business_account") {
-      normalized = whatsapp.processWebhook(body);
-    } else if (object === "instagram") {
-      normalized = instagram.processWebhook(body);
-      if (normalized && !normalized._isStatusEvent) {
-        var igName = await instagram.getUserProfile(normalized.channelId);
-        if (igName) { normalized.senderName = igName; }
-      }
-    } else if (object === "page") {
-      normalized = facebook.processWebhook(body);
-      if (normalized && !normalized._isStatusEvent) {
-        var fbName = await facebook.getUserProfile(normalized.channelId);
-        if (fbName) { normalized.senderName = fbName; }
-      }
-    }
-    if (normalized && normalized._isStatusEvent) {
-      handleStatusUpdate(normalized);
-      return;
-    }
-    if (normalized) { await handleIncomingMessage(normalized); }
-  } catch (err) {
-    console.error("Error en webhook Meta:", err);
-  }
-});
-
-router.post("/email", async function(req, res) {
-  res.sendStatus(200);
-  try {
-    var normalized = email.processWebhook(req.body);
-    if (normalized) { await handleIncomingMessage(normalized); }
-  } catch (err) {
-    console.error("Error en webhook Email:", err);
-  }
-});
-
-router.post("/phone", async function(req, res) {
-  try {
-    var normalized = {
-      channel: "telefono",
-      channelId: req.body.callerPhone || "phone-" + Date.now(),
-      senderName: req.body.callerName || "Llamada entrante",
-      senderPhone: req.body.callerPhone,
-      text: req.body.summary || "[Llamada registrada]",
-      messageId: null,
-      timestamp: Date.now(),
-      phoneLine: req.body.phoneLine || 3,
-      mediaType: null,
-      mediaUrl: null,
-      storyUrl: null
-    };
-    var result = await handleIncomingMessage(normalized);
-    res.json({ success: true, contact: result.contact, classification: result.classification });
-  } catch (err) {
-    console.error("Error registrando llamada:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
+module.exports = {
+  classifyMessage: classifyMessage,
+  generateSuggestion: generateSuggestion,
+  generateAutoReply: generateAutoReply,
+  generateFollowup: generateFollowup,
+  generateFicha: generateFicha,
+  detectLostReason: detectLostReason,
+  DEPARTMENTS: DEPARTMENTS,
+  STAGE_LABELS: STAGE_LABELS
+};
