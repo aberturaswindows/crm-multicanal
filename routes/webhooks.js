@@ -208,6 +208,10 @@ function handleStatusUpdate(statusEvent) {
 async function handleAutoReply(contact, channel) {
   try {
     var db = getDb();
+    // MODO PRUEBA mamparas: cotizaciones para enviar al cliente despues del mensaje de Claudia
+    var cotizacionDirecta = mamparas.cotizacionDirectaHabilitada(contact);
+    var cotizacionesCliente = [];
+    var mamparasEnFicha = 0;
     var messages = db.prepare("SELECT direction, content, media_type, media_url FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(contact.id);
     var result = await generateAutoReply(contact, messages);
 
@@ -303,6 +307,7 @@ async function handleAutoReply(contact, channel) {
                 for (var mi = 0; mi < r.aberturas.length; mi++) {
                   var ab = r.aberturas[mi];
                   var esMampara = (ab.tipo && String(ab.tipo).toLowerCase().indexOf("mampara") !== -1) || ab.modelo;
+                  if (esMampara) mamparasEnFicha++;
                   if (esMampara && ab.modelo && ab.cristal && ab.ancho_cm && ab.alto_cm) {
                     var cot = mamparas.cotizarMampara({
                       modelo: ab.modelo,
@@ -317,6 +322,11 @@ async function handleAutoReply(contact, channel) {
                     }
                     if (ab.cantidad > 1 && cot.ok) {
                       cotTexto += "\n\u{1F522} Cantidad solicitada: " + ab.cantidad + " unidades (el precio es POR UNIDAD).";
+                    }
+                    // MODO PRUEBA: solo si se pudo calcular y la zona esta definida (Si/No)
+                    if (cotizacionDirecta && cot.ok && gm !== null) {
+                      cotizacionesCliente.push(mamparas.formatearCotizacionCliente(cot, ab.cantidad || 1));
+                      cotTexto += "\n\u{1F9EA} MODO PRUEBA: esta cotizacion se envio automaticamente al cliente.";
                     }
                     db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name) VALUES (?, 'system', ?, ?, 'Sistema')").run(contact.id, cotTexto, channel);
                     console.log("[MAMPARAS] Cotizacion " + (cot.ok ? "calculada" : "fallida") + " para " + contact.name + ": " + (cot.ok ? cot.modelo + " " + cot.medidaCotizada : cot.error));
@@ -351,6 +361,29 @@ async function handleAutoReply(contact, channel) {
       db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(sendResult.error || 'Unknown error', msgId);
     }
     console.log("[CLAUDIA] " + channel.toUpperCase() + " -> " + contact.name + ": " + result.reply.substring(0, 60) + "... | Enviado: " + sendResult.success);
+
+    // MODO PRUEBA mamparas: enviar la(s) cotizacion(es) calculadas por el sistema.
+    // Si habia mamparas pero no se pudo cotizar ninguna (zona sin definir, medida fuera
+    // de rango, modelo no reconocido), avisamos que un asesor la envia.
+    if (cotizacionDirecta && sendResult.success && mamparasEnFicha > 0) {
+      var textosCliente = cotizacionesCliente.length > 0
+        ? cotizacionesCliente
+        : ["Un asesor revisa los datos de su mampara y le envia la cotizacion a la brevedad."];
+      for (var qi = 0; qi < textosCliente.length; qi++) {
+        try {
+          var qIns = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, 'Claudia', 'pending')").run(contact.id, textosCliente[qi], channel);
+          var qRes = await sendChannelMessage(channel, contact.channel_id, contact.phone_line, contact.email, textosCliente[qi]);
+          if (qRes.success) {
+            db.prepare("UPDATE messages SET status='sent', sent_at=CURRENT_TIMESTAMP, channel_message_id=? WHERE id=?").run(qRes.messageId || null, qIns.lastInsertRowid);
+          } else {
+            db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(qRes.error || 'Unknown error', qIns.lastInsertRowid);
+          }
+          console.log("[MAMPARAS] MODO PRUEBA: cotizacion enviada a " + contact.name + " | Enviado: " + qRes.success);
+        } catch (qErr) {
+          console.error("[MAMPARAS] MODO PRUEBA: error enviando cotizacion:", qErr.message);
+        }
+      }
+    }
 
     // CATALOGO DE MAMPARAS: si Claudia lo pidio (cliente sin modelo definido),
     // se envia despues de su mensaje. Una sola vez por contacto.
