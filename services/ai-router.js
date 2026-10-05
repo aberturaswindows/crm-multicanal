@@ -562,13 +562,21 @@ async function generateAutoReply(contact, messages) {
     prompt += "- En ese caso tu reply debe decir que le envias el catalogo para que vea los modelos (ej: 'Le envio el catalogo de mamparas para que vea los modelos'), y podes sumar una pregunta para orientarlo (banera o ducha, frontal o esquinero). NO pegues links ni digas que lo adjuntas vos.\n";
     prompt += "- Si el cliente ya nombro un modelo concreto o la consulta no es de mamparas, enviar_catalogo_mamparas va en false.\n\n";
   }
+  if (mamparas.cotizacionDirectaHabilitada(contact)) {
+    prompt += "COTIZACION DE MAMPARAS (MODO PRUEBA ACTIVO PARA ESTE CLIENTE):\n";
+    prompt += "- Para MAMPARAS (y solo mamparas) este cliente recibe la cotizacion al instante: el SISTEMA calcula el precio y lo envia automaticamente justo despues de tu mensaje.\n";
+    prompt += "- Cuando tengas todos los datos de la mampara (modelo Glassic, ancho y alto en cm, cristal, y si la obra esta o no en el Gran Mendoza), marca datos_completos e inclui la mampara en resumen.aberturas con modelo, cristal, ancho_cm, alto_cm y cantidad, y gran_mendoza en Si o No.\n";
+    prompt += "- En ese mensaje decile que a continuacion le envias la cotizacion (ej: 'Perfecto, ya tengo todo. A continuacion le paso la cotizacion.'). NO digas que se prepara en 72 hs y NO escribas ningun numero ni precio vos: los precios los manda el sistema.\n";
+    prompt += "- Si no sabe si la obra esta en el Gran Mendoza, preguntaselo ANTES de marcar datos_completos (sin ese dato no se puede cotizar).\n";
+    prompt += "- Para cualquier otro producto (aberturas, etc.) sigue rigiendo: NUNCA dar precios, se arma un presupuesto formal.\n\n";
+  }
   prompt += stageInstructions + "\n";
   prompt += "REGLAS GENERALES:\n";
   prompt += "- Trato: SIEMPRE de USTED al cliente. Nunca tutear.\n";
   prompt += "- Tono: profesional y cálido, como un asesor argentino de confianza.\n";
   prompt += "- NO repitas 'Perfecto' ni 'Excelente'. Variá con: 'Anotado', 'Entendido', 'Muy bien', 'Por supuesto'.\n";
   prompt += "- NUNCA inventes información técnica. Si no sabés, decile 'Lo consulto con el área técnica y le confirmo'.\n";
-  prompt += "- NUNCA dar precios por mensaje. Siempre ofrecé armar un presupuesto formal.\n";
+  prompt += "- NUNCA dar precios por mensaje (salvo la excepcion de MODO PRUEBA de mamparas, donde el precio lo envia el sistema, no vos). Siempre ofrecé armar un presupuesto formal.\n";
   prompt += "- MEDIDAS: Si el cliente menciona medidas sin aclarar orientación, SIEMPRE preguntá: '¿El [número mayor] es el ancho o el alto?'\n";
   prompt += "- MATERIAL: Si el cliente pide cotizar aberturas y no aclaró si las quiere de ALUMINIO o de PVC, preguntáselo como parte de los datos.\n";
   prompt += "- PUERTAS PLEGADIZAS: Si mencionan una puerta plegadiza/plegable/fuelle sin detalles, primero preguntá el uso y las medidas del vano antes de negar o confirmar (ver conocimiento de la empresa).\n";
