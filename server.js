@@ -39,7 +39,15 @@ app.get("/health", (req, res) => {
       facebook: !!process.env.FACEBOOK_PAGE_TOKEN,
       email: !!process.env.SENDGRID_API_KEY,
       ai: !!process.env.ANTHROPIC_API_KEY,
-    }
+    },
+    // Estado del modo prueba de cotizacion de mamparas (sin mostrar los numeros)
+    mamparas_modo_prueba: (function() {
+      var v = String(process.env.MAMPARAS_COTIZACION_DIRECTA || "").trim();
+      if (!v || /^(no|false|0)$/i.test(v)) return "apagado";
+      if (/^(todos|si|true|1)$/i.test(v)) return "activo para todos";
+      var n = v.split(/[,;]+/).filter(function(x) { return x.replace(/\D/g, "").length >= 8; }).length;
+      return "activo para " + n + " numero(s)";
+    })()
   });
 });
 
