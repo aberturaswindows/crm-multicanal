@@ -210,6 +210,9 @@ async function handleAutoReply(contact, channel) {
     var db = getDb();
     // MODO PRUEBA mamparas: cotizaciones para enviar al cliente despues del mensaje de Claudia
     var cotizacionDirecta = mamparas.cotizacionDirectaHabilitada(contact);
+    if (process.env.MAMPARAS_COTIZACION_DIRECTA) {
+      console.log("[MAMPARAS] Modo prueba " + (cotizacionDirecta ? "ACTIVO" : "inactivo") + " para " + contact.name + " (" + contact.channel_id + ")");
+    }
     var cotizacionesCliente = [];
     var mamparasEnFicha = 0;
     var messages = db.prepare("SELECT direction, content, media_type, media_url FROM messages WHERE contact_id = ? ORDER BY created_at ASC").all(contact.id);
@@ -366,9 +369,12 @@ async function handleAutoReply(contact, channel) {
     // Si habia mamparas pero no se pudo cotizar ninguna (zona sin definir, medida fuera
     // de rango, modelo no reconocido), avisamos que un asesor la envia.
     if (cotizacionDirecta && sendResult.success && mamparasEnFicha > 0) {
-      var textosCliente = cotizacionesCliente.length > 0
-        ? cotizacionesCliente
-        : ["Un asesor revisa los datos de su mampara y le envia la cotizacion a la brevedad."];
+      var textosCliente = cotizacionesCliente.slice();
+      if (cotizacionesCliente.length === 0) {
+        textosCliente.push("Un asesor revisa los datos de su mampara y le envia la cotizacion a la brevedad.");
+      } else if (cotizacionesCliente.length < mamparasEnFicha) {
+        textosCliente.push("La otra mampara (a medida) la revisa un asesor y le envia la cotizacion a la brevedad.");
+      }
       for (var qi = 0; qi < textosCliente.length; qi++) {
         try {
           var qIns = db.prepare("INSERT INTO messages (contact_id, direction, content, channel, agent_name, status) VALUES (?, 'outgoing', ?, ?, 'Claudia', 'pending')").run(contact.id, textosCliente[qi], channel);
