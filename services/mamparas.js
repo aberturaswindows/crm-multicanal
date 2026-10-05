@@ -438,6 +438,65 @@ var MAMPARAS_GUIA = [
   "Para cotizar una mampara necesitas: modelo, ancho y alto en cm, cristal, y si esta dentro del Gran Mendoza. El PRECIO lo calcula el sistema y lo aprueba un asesor: vos NUNCA lo decis en el chat."
 ].join("\n");
 
+// ------------------------------------------------------------
+// MODO PRUEBA: cotizacion directa al cliente
+// Variable de entorno MAMPARAS_COTIZACION_DIRECTA (en Railway):
+//   - vacia / no existe -> APAGADO (el precio solo lo ve el vendedor, como siempre)
+//   - "todos"           -> Claudia cotiza directo a TODOS los clientes
+//   - "2613539384,2615551234" -> solo a esos numeros de WhatsApp (ultimos 10 digitos)
+// El precio SIEMPRE lo calcula este modulo; Claudia nunca escribe numeros.
+// ------------------------------------------------------------
+function soloDigitos(x) { return String(x || "").replace(/\D/g, ""); }
+
+function cotizacionDirectaHabilitada(contact) {
+  var cfg = String(process.env.MAMPARAS_COTIZACION_DIRECTA || "").trim().toLowerCase();
+  if (!cfg || cfg === "no" || cfg === "false" || cfg === "0") return false;
+  if (cfg === "todos" || cfg === "si" || cfg === "true" || cfg === "1") return true;
+  if (!contact) return false;
+  var numeros = [soloDigitos(contact.channel_id), soloDigitos(contact.phone)].filter(function(n) { return n.length >= 8; });
+  var lista = cfg.split(/[,;\s]+/).map(soloDigitos).filter(function(n) { return n.length >= 8; });
+  for (var i = 0; i < lista.length; i++) {
+    var objetivo = lista[i].slice(-10);
+    for (var j = 0; j < numeros.length; j++) {
+      // WhatsApp Argentina a veces trae el 9 extra (549...): comparamos los ultimos 10 sin el 9 movil
+      var n = numeros[j].replace(/^549/, "54").slice(-10);
+      if (n === objetivo || numeros[j].slice(-10) === objetivo) return true;
+    }
+  }
+  return false;
+}
+
+// Texto de la cotizacion para el CLIENTE (formato WhatsApp, sin datos internos).
+function formatearCotizacionCliente(c, cantidad) {
+  if (!c || !c.ok) return null;
+  var cristalTxt = { incoloro: "Incoloro", color: "Color (Gris o Bronce)", textura: "Textura (Dreamline o Pacific)", saten: "Saten" }[c.cristal] || c.cristal;
+  var t = "*Cotizacion mampara de bano*\n";
+  t += "Modelo: " + c.modelo + "\n";
+  t += "Medida: " + c.medidaCotizada + "\n";
+  t += "Cristal: " + cristalTxt + "\n\n";
+  t += "Mampara: " + fmt(c.precioMampara) + " + IVA\n";
+  t += "Flete: " + fmt(c.flete) + " + IVA\n";
+  if (c.granMendoza) {
+    if (c.tipoColocacion === "estandar") {
+      t += "Colocacion: " + fmt(c.colocacion) + " + IVA\n";
+      if (c.medicion) t += "Medicion previa en domicilio: " + fmt(c.medicion) + " + IVA\n";
+    } else {
+      t += "Medicion y colocacion: " + fmt(c.colocacion) + " + IVA\n";
+    }
+    t += "\n*Total: " + fmt(c.subtotalSinIva) + " + IVA (" + fmt(c.totalConIva) + " IVA incluido)*\n";
+  } else {
+    t += "\n*Total: " + fmt(c.subtotalSinIva) + " + IVA (" + fmt(c.totalConIva) + " IVA incluido)*\n";
+    t += "La colocacion fuera del Gran Mendoza se cotiza aparte segun la ubicacion de la obra.\n";
+  }
+  if (cantidad > 1) t += "Precios por unidad. Cantidad solicitada: " + cantidad + ".\n";
+  for (var i = 0; i < c.notas.length; i++) {
+    // Solo notas utiles para el cliente (el aviso de serie sin colocacion en lista es interno)
+    if (c.notas[i].indexOf("lista de colocacion") === -1) t += c.notas[i] + "\n";
+  }
+  t += "\nPrecios sujetos a verificacion de medidas en obra.";
+  return t;
+}
+
 // Aviso para el vendedor cuando no quedo claro si la obra es en Gran Mendoza.
 function avisoZonaSinConfirmar(c) {
   if (!c || !c.ok) return "";
@@ -454,6 +513,8 @@ module.exports = {
   cotizarMampara: cotizarMampara,
   formatearCotizacion: formatearCotizacion,
   avisoZonaSinConfirmar: avisoZonaSinConfirmar,
+  cotizacionDirectaHabilitada: cotizacionDirectaHabilitada,
+  formatearCotizacionCliente: formatearCotizacionCliente,
   MAMPARAS_GUIA: MAMPARAS_GUIA,
   SERIES: SERIES,
   FLETE_GLASSIC: FLETE_GLASSIC,
