@@ -562,12 +562,14 @@ async function generateAutoReply(contact, messages) {
     prompt += "- En ese caso tu reply debe decir que le envias el catalogo para que vea los modelos (ej: 'Le envio el catalogo de mamparas para que vea los modelos'), y podes sumar una pregunta para orientarlo (banera o ducha, frontal o esquinero). NO pegues links ni digas que lo adjuntas vos.\n";
     prompt += "- Si el cliente ya nombro un modelo concreto o la consulta no es de mamparas, enviar_catalogo_mamparas va en false.\n\n";
   }
-  if (mamparas.cotizacionDirectaHabilitada(contact)) {
-    prompt += "COTIZACION DE MAMPARAS (MODO PRUEBA ACTIVO PARA ESTE CLIENTE):\n";
-    prompt += "- Para MAMPARAS (y solo mamparas) este cliente recibe la cotizacion al instante: el SISTEMA calcula el precio y lo envia automaticamente justo despues de tu mensaje.\n";
-    prompt += "- Cuando tengas todos los datos de la mampara (modelo Glassic, ancho y alto en cm, cristal, y si la obra esta o no en el Gran Mendoza), marca datos_completos e inclui la mampara en resumen.aberturas con modelo, cristal, ancho_cm, alto_cm y cantidad, y gran_mendoza en Si o No.\n";
-    prompt += "- En ese mensaje decile que a continuacion le envias la cotizacion (ej: 'Perfecto, ya tengo todo. A continuacion le paso la cotizacion.'). NO digas que se prepara en 72 hs y NO escribas ningun numero ni precio vos: los precios los manda el sistema.\n";
-    prompt += "- Si no sabe si la obra esta en el Gran Mendoza, preguntaselo ANTES de marcar datos_completos (sin ese dato no se puede cotizar).\n";
+  var modoPruebaMamparas = mamparas.cotizacionDirectaHabilitada(contact);
+  if (modoPruebaMamparas) {
+    prompt += "COTIZACION DE MAMPARAS (MODO PRUEBA ACTIVO PARA ESTE CLIENTE) - ESTA REGLA TIENE PRIORIDAD SOBRE LAS INSTRUCCIONES DE ETAPA Y SOBRE 'NUNCA DAR PRECIOS' PARA MAMPARAS:\n";
+    prompt += "- Este cliente puede recibir el precio de MAMPARAS al instante, en CUALQUIER etapa de la conversacion (aunque ya se hayan pasado los datos o se haya dicho que lo arma un asesor). El SISTEMA calcula el precio con la lista oficial y lo envia justo despues de tu mensaje.\n";
+    prompt += "- Cuando el cliente pida precio/cotizacion/valor de una mampara y tengas modelo Glassic, ancho y alto en cm, cristal, y si la obra esta o no en el Gran Mendoza, completa el campo cotizar_mamparas (ver formato abajo) y en tu reply decile que a continuacion le pasas la cotizacion (ej: 'Perfecto, a continuacion le paso la cotizacion.').\n";
+    prompt += "- Si falta alguno de esos datos, pediselo (no completes cotizar_mamparas hasta tenerlos). Si el modelo es de medida estandar y la medida pedida no existe, segui la regla de medidas estandar de la guia.\n";
+    prompt += "- Si describe una configuracion en vez de un modelo (ej: 'mitad fija mitad corrediza' = Box Frontal), traducila al modelo del catalogo y confirmaselo.\n";
+    prompt += "- NUNCA escribas numeros ni precios vos: los manda el sistema. No digas 72 hs para las mamparas que se cotizan asi.\n";
     prompt += "- Para cualquier otro producto (aberturas, etc.) sigue rigiendo: NUNCA dar precios, se arma un presupuesto formal.\n\n";
   }
   prompt += stageInstructions + "\n";
@@ -595,6 +597,9 @@ async function generateAutoReply(contact, messages) {
   prompt += 'Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato:\n';
   prompt += '{"reply":"tu respuesta al cliente","stage_assessment":"consulta|recopilando_datos|datos_completos|cliente_acepta|cliente_rechaza|continuar","resumen":null,"enviar_catalogo_mamparas":false}\n';
   prompt += 'enviar_catalogo_mamparas: true SOLO cuando corresponda enviar el catalogo de mamparas (ver CATALOGO DE MAMPARAS); en cualquier otro caso false.\n';
+  if (modoPruebaMamparas) {
+    prompt += 'cotizar_mamparas: null, o cuando corresponda cotizar (ver COTIZACION DE MAMPARAS): {"gran_mendoza":"Si" o "No","items":[{"modelo":"Box Frontal","cristal":"incoloro|color|textura|saten","ancho_cm":170,"alto_cm":200,"cantidad":1}]}. Medidas en cm como enteros. Agrega este campo al mismo JSON.\n';
+  }
   prompt += '\nDonde stage_assessment es:\n';
   prompt += '- "consulta": el cliente recien consulta, no pidio cotizacion aun\n';
   prompt += '- "recopilando_datos": el cliente esta interesado y estamos pidiendo/recibiendo datos\n';
@@ -635,6 +640,7 @@ async function generateAutoReply(contact, messages) {
       var assessment = parsed.stage_assessment || "continuar";
       var resumen = parsed.resumen || null;
       var enviarCatalogo = parsed.enviar_catalogo_mamparas === true && !catalogoYaEnviado;
+      var cotizarMamparas = (modoPruebaMamparas && parsed.cotizar_mamparas && Array.isArray(parsed.cotizar_mamparas.items) && parsed.cotizar_mamparas.items.length > 0) ? parsed.cotizar_mamparas : null;
 
       var stageChange = null;
       if (assessment === "datos_completos" && stage !== "datos_completos") {
@@ -647,7 +653,7 @@ async function generateAutoReply(contact, messages) {
         stageChange = "cerrado_perdido";
       }
 
-      return { reply: reply, stageChange: stageChange, resumen: resumen, enviarCatalogoMamparas: enviarCatalogo };
+      return { reply: reply, stageChange: stageChange, resumen: resumen, enviarCatalogoMamparas: enviarCatalogo, cotizarMamparas: cotizarMamparas };
     } catch (parseErr) {
       // NUNCA mandar el JSON crudo al cliente. Intentamos rescatar solo el campo reply;
       // si no se puede, mejor no responder nada.
