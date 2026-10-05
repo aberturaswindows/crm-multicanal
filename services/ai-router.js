@@ -1,4 +1,5 @@
 var mamparas = require("./mamparas");
+var catalogos = require("./catalogos");
 var fs = require("fs");
 var path = require("path");
 var MEDIA_DIR = fs.existsSync("/data") ? "/data/media" : path.join(__dirname, "..", "data", "media");
@@ -552,6 +553,15 @@ async function generateAutoReply(contact, messages) {
   prompt += CLAUDIA_PERSONA + "\n\n";
   prompt += "CONOCIMIENTO DE LA EMPRESA:\n" + COMPANY_KNOWLEDGE + "\n\n";
   prompt += mamparas.MAMPARAS_GUIA + "\n\n";
+  var catalogoYaEnviado = catalogos.catalogoMamparasEnHistorial(messages);
+  prompt += "CATALOGO DE MAMPARAS (PDF):\n";
+  if (catalogoYaEnviado) {
+    prompt += "- El catalogo de mamparas YA le fue enviado a este cliente. NO lo vuelvas a enviar (enviar_catalogo_mamparas siempre false). Si no encuentra el modelo, invitalo a revisar el catalogo que se le envio y asesoralo.\n\n";
+  } else {
+    prompt += "- Si el cliente consulta por mamparas y todavia NO sabe que modelo quiere (no nombro un modelo, pregunta que modelos hay, pide ver opciones/fotos, o no tiene claro cual le conviene), pone enviar_catalogo_mamparas en true. El sistema le manda el catalogo en PDF automaticamente justo despues de tu mensaje.\n";
+    prompt += "- En ese caso tu reply debe decir que le envias el catalogo para que vea los modelos (ej: 'Le envio el catalogo de mamparas para que vea los modelos'), y podes sumar una pregunta para orientarlo (banera o ducha, frontal o esquinero). NO pegues links ni digas que lo adjuntas vos.\n";
+    prompt += "- Si el cliente ya nombro un modelo concreto o la consulta no es de mamparas, enviar_catalogo_mamparas va en false.\n\n";
+  }
   prompt += stageInstructions + "\n";
   prompt += "REGLAS GENERALES:\n";
   prompt += "- Trato: SIEMPRE de USTED al cliente. Nunca tutear.\n";
@@ -575,7 +585,8 @@ async function generateAutoReply(contact, messages) {
   prompt += "El cliente " + contact.name + " te contacto por " + (channelLabels[contact.channel] || contact.channel) + ".\n\n";
   prompt += "Historial de la conversacion:\n" + history + "\n\n";
   prompt += 'Responde SOLO con un JSON valido (sin markdown, sin backticks) con este formato:\n';
-  prompt += '{"reply":"tu respuesta al cliente","stage_assessment":"consulta|recopilando_datos|datos_completos|cliente_acepta|cliente_rechaza|continuar","resumen":null}\n';
+  prompt += '{"reply":"tu respuesta al cliente","stage_assessment":"consulta|recopilando_datos|datos_completos|cliente_acepta|cliente_rechaza|continuar","resumen":null,"enviar_catalogo_mamparas":false}\n';
+  prompt += 'enviar_catalogo_mamparas: true SOLO cuando corresponda enviar el catalogo de mamparas (ver CATALOGO DE MAMPARAS); en cualquier otro caso false.\n';
   prompt += '\nDonde stage_assessment es:\n';
   prompt += '- "consulta": el cliente recien consulta, no pidio cotizacion aun\n';
   prompt += '- "recopilando_datos": el cliente esta interesado y estamos pidiendo/recibiendo datos\n';
@@ -615,6 +626,7 @@ async function generateAutoReply(contact, messages) {
       var reply = parsed.reply || null;
       var assessment = parsed.stage_assessment || "continuar";
       var resumen = parsed.resumen || null;
+      var enviarCatalogo = parsed.enviar_catalogo_mamparas === true && !catalogoYaEnviado;
 
       var stageChange = null;
       if (assessment === "datos_completos" && stage !== "datos_completos") {
@@ -627,7 +639,7 @@ async function generateAutoReply(contact, messages) {
         stageChange = "cerrado_perdido";
       }
 
-      return { reply: reply, stageChange: stageChange, resumen: resumen };
+      return { reply: reply, stageChange: stageChange, resumen: resumen, enviarCatalogoMamparas: enviarCatalogo };
     } catch (parseErr) {
       // NUNCA mandar el JSON crudo al cliente. Intentamos rescatar solo el campo reply;
       // si no se puede, mejor no responder nada.
