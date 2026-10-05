@@ -1,199 +1,225 @@
 // ============================================================
-// MAMPARAS GLASSIC - Lista de precios L106 (Edicion 8/7/2026)
+// MAMPARAS GLASSIC - Lista de precios L107 (Edicion 10/9/2026)
 // Precios de lista SIN IVA. Se venden a precio de lista tal cual.
-// Instalacion (medicion + flete + colocacion) Gran Mendoza: $299.700 + IVA.
-// Fuera del Gran Mendoza: la calcula el vendedor manualmente.
+// Colocacion: lista "Colocaciones Glassic - Octubre 2026 - Version 1" (1/10/2026):
+//   - Flete Glassic -> transporte: $48.200 + IVA, se suma a TODAS las mamparas.
+//   - Mamparas STANDARD (series 1000, 2000, 2100, 2200, 3100, 3200 y sus
+//     variantes punta curva): colocacion $167.200 + IVA (NO incluye medicion)
+//     + medicion previa a domicilio $85.000 + IVA.
+//   - Mamparas A MEDIDA (1200, 4000-4300, 5000-5400, 6000-6400, 7100, 8100,
+//     8200, 9000-9300): colocacion $379.400 + IVA (incluye medicion).
+//   - Colocacion y medicion solo dentro del Gran Mendoza. Fuera del Gran
+//     Mendoza las calcula el vendedor manualmente (el flete Glassic se suma igual).
 // IMPORTANTE: la cotizacion la calcula SIEMPRE este modulo (deterministico),
 // nunca la IA. Claudia solo recopila los datos.
 // ============================================================
 
-var LISTA_EDICION = "L106 (8/7/2026)";
-var INSTALACION_GRAN_MENDOZA = 299700; // + IVA
+var LISTA_EDICION = "L107 (10/9/2026)";
+var LISTA_COLOCACION = "Colocaciones Glassic Oct-2026 v1";
+var FLETE_GLASSIC = 48200;                 // + IVA, todas las mamparas
+var COLOCACION_ESTANDAR = 167200;          // + IVA, no incluye medicion
+var MEDICION_PREVIA_ESTANDAR = 85000;      // + IVA, solo mamparas standard
+var COLOCACION_A_MEDIDA = 379400;          // + IVA, incluye medicion
+// Si se pone en false, la medicion previa de las standard se muestra como opcional y no se suma al total.
+var INCLUIR_MEDICION_ESTANDAR = true;
 var IVA = 0.21;
+
+// Series que figuran explicitamente en la lista de colocacion.
+var COLOC_LISTA_ESTANDAR = ["1000", "1010", "2000", "2010", "2100", "2110", "2200", "3100", "3110", "3200"];
+var COLOC_LISTA_A_MEDIDA = ["1200", "4000", "4100", "4200", "4300", "5000", "5100", "5200", "5300", "5400",
+  "6000", "6100", "6200", "6300", "6400", "7100", "8100-A", "8100-B", "8100-C", "8100-D", "9000", "9200", "9300"];
+
+// Devuelve el tipo de colocacion de una serie y si figura en la lista (si no figura,
+// se asume segun su tipo de medida y se avisa al vendedor para que lo verifique).
+function tipoColocacion(serie) {
+  if (COLOC_LISTA_ESTANDAR.indexOf(serie.serie) !== -1) return { tipo: "estandar", enLista: true };
+  if (COLOC_LISTA_A_MEDIDA.indexOf(serie.serie) !== -1) return { tipo: "a_medida", enLista: true };
+  return { tipo: serie.medida === "estandar" ? "estandar" : "a_medida", enLista: false };
+}
 
 // tipo de medida: "estandar" (medidas fijas) o "rango" (se fabrica a medida dentro del rango)
 // cristales: incoloro | color (Gris y Bronce) | textura (Dreamline y Pacific) | saten
 var SERIES = [
   // ---------- LINEA 1000 - PANEL (estandar) ----------
   { serie: "1000", nombre: "Panel", apertura: "panel fijo", medida: "estandar", items: [
-    { ancho: 80, alto: 160, precios: { incoloro: 342940, color: 403362, textura: 394382, saten: 563238 } },
-    { ancho: 80, alto: 200, precios: { incoloro: 416999, color: 488750, textura: 479549, saten: 679439 } }
+    { ancho: 80, alto: 160, precios: { incoloro: 370375, color: 435631, textura: 425932, saten: 608297 } },
+    { ancho: 80, alto: 200, precios: { incoloro: 450359, color: 527850, textura: 517913, saten: 733794 } }
   ]},
   { serie: "1010", nombre: "Panel Punta Curva", apertura: "panel fijo", medida: "estandar", items: [
-    { ancho: 80, alto: 160, precios: { incoloro: 348819, color: 410277, textura: 401142, saten: 572131 } },
-    { ancho: 80, alto: 200, precios: { incoloro: 424148, color: 497128, textura: 487770, saten: 690167 } }
+    { ancho: 80, alto: 160, precios: { incoloro: 376725, color: 443099, textura: 433234, saten: 617902 } },
+    { ancho: 80, alto: 200, precios: { incoloro: 458080, color: 536899, textura: 526791, saten: 745380 } }
   ]},
   { serie: "1200", nombre: "Panel Angulo", apertura: "panel fijo en angulo", medida: "rango", items: [
-    { anchoMin: 70, anchoMax: 90, alto: 160, precios: { incoloro: 704160, color: 841663, textura: 809784, saten: 1185409 } },
-    { anchoMin: 70, anchoMax: 90, alto: 200, precios: { incoloro: 834985, color: 998270, textura: 960233, saten: 1406380 } }
+    { anchoMin: 70, anchoMax: 90, alto: 160, precios: { incoloro: 760493, color: 908996, textura: 874567, saten: 1280242 } },
+    { anchoMin: 70, anchoMax: 90, alto: 200, precios: { incoloro: 901784, color: 1078132, textura: 1037052, saten: 1518890 } }
   ]},
 
   // ---------- LINEA 2000 - REBATIBLE PIVOT (estandar) ----------
   { serie: "2000", nombre: "Rebatible Pivot", apertura: "hoja rebatible", medida: "estandar", items: [
-    { ancho: 85, alto: 150, precios: { incoloro: 360766, color: 393480, textura: 414880, saten: 531595 } },
-    { ancho: 85, alto: 190, precios: { incoloro: 627385, color: 703479, textura: 721492, saten: 918781 } }
+    { ancho: 85, alto: 150, precios: { incoloro: 389627, color: 424959, textura: 448071, saten: 574122 } },
+    { ancho: 85, alto: 190, precios: { incoloro: 677576, color: 759757, textura: 779212, saten: 992283 } }
   ]},
   { serie: "2010", nombre: "Rebatible Pivot Punta Curva", apertura: "hoja rebatible", medida: "estandar", items: [
-    { ancho: 85, alto: 150, precios: { incoloro: 367325, color: 400635, textura: 422424, saten: 540455 } },
-    { ancho: 85, alto: 190, precios: { incoloro: 656558, color: 715074, textura: 755042, saten: 932772 } }
+    { ancho: 85, alto: 150, precios: { incoloro: 396711, color: 432686, textura: 456218, saten: 583691 } },
+    { ancho: 85, alto: 190, precios: { incoloro: 709083, color: 772280, textura: 815445, saten: 1007394 } }
   ]},
   { serie: "2100", nombre: "Rebatible Pivot Par", apertura: "hoja rebatible + fijo", medida: "estandar", items: [
-    { ancho: 100, alto: 150, precios: { incoloro: 467954, color: 518199, textura: 538146, saten: 696515 } },
-    { ancho: 100, alto: 190, precios: { incoloro: 694488, color: 783838, textura: 798662, saten: 1033167 } }
+    { ancho: 100, alto: 150, precios: { incoloro: 505390, color: 559655, textura: 581198, saten: 752236 } },
+    { ancho: 100, alto: 190, precios: { incoloro: 750047, color: 846545, textura: 862555, saten: 1115820 } }
   ]},
   { serie: "2110", nombre: "Rebatible Pivot Par Punta Curva", apertura: "hoja rebatible + fijo", medida: "estandar", items: [
-    { ancho: 100, alto: 150, precios: { incoloro: 475668, color: 526741, textura: 547017, saten: 707122 } },
-    { ancho: 100, alto: 190, precios: { incoloro: 705936, color: 796758, textura: 811827, saten: 1048900 } }
+    { ancho: 100, alto: 150, precios: { incoloro: 513721, color: 568880, textura: 590779, saten: 763692 } },
+    { ancho: 100, alto: 190, precios: { incoloro: 762411, color: 860499, textura: 876773, saten: 1132812 } }
   ]},
   { serie: "2200", nombre: "Rebatible Pivot Forma", apertura: "hoja rebatible", medida: "estandar", items: [
-    { ancho: 95, alto: 141, precios: { incoloro: 437235, color: 481358, textura: 502821, saten: 656910 } }
+    { ancho: 95, alto: 141, precios: { incoloro: 472214, color: 519867, textura: 543047, saten: 709462 } }
   ]},
 
   // ---------- LINEA 3000 - REBATIBLE BOLT (estandar) ----------
   { serie: "3100", nombre: "Rebatible Bolt", apertura: "hoja rebatible + fijo", medida: "estandar", items: [
-    { ancho: 100, alto: 150, precios: { incoloro: 897672, color: 964265, textura: 1032323, saten: 1146620 } },
-    { ancho: 100, alto: 190, precios: { incoloro: 989654, color: 1075610, textura: 1138102, saten: 1302448 } }
+    { ancho: 100, alto: 150, precios: { incoloro: 969486, color: 1041406, textura: 1114909, saten: 1238350 } },
+    { ancho: 100, alto: 190, precios: { incoloro: 1068826, color: 1161659, textura: 1229150, saten: 1406644 } }
   ]},
   { serie: "3110", nombre: "Rebatible Bolt Punta Curva", apertura: "hoja rebatible + fijo", medida: "estandar", items: [
-    { ancho: 100, alto: 150, precios: { incoloro: 943038, color: 1012996, textura: 1084494, saten: 1201194 } },
-    { ancho: 100, alto: 190, precios: { incoloro: 1039669, color: 1129969, textura: 1195619, saten: 1364437 } }
+    { ancho: 100, alto: 150, precios: { incoloro: 1018481, color: 1094036, textura: 1171253, saten: 1297289 } },
+    { ancho: 100, alto: 190, precios: { incoloro: 1122842, color: 1220367, textura: 1291268, saten: 1473592 } }
   ]},
   { serie: "3200", nombre: "Rebatible Bolt Forma", apertura: "hoja rebatible + fijo", medida: "estandar", items: [
-    { ancho: 100, alto: 143, precios: { incoloro: 998505, color: 1082853, textura: 1148282, saten: 1302528 } }
+    { ancho: 100, alto: 143, precios: { incoloro: 1078386, color: 1169481, textura: 1240144, saten: 1406731 } }
   ]},
 
   // ---------- LINEA 4000 - BOX (a medida) ----------
   { serie: "4000", nombre: "Box Frontal", apertura: "corrediza", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 943831, color: 1068452, saten: 1381139 } },
-    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 1105964, color: 1260795, saten: 1645476 } },
-    { anchoMin: 201, anchoMax: 250, alto: 160, precios: { incoloro: 1306890, color: 1499485, saten: 1974058 } },
-    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 1047016, color: 1195240, saten: 1562831 } },
-    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 1229594, color: 1413693, saten: 1866207 } },
-    { anchoMin: 201, anchoMax: 250, alto: 200, precios: { incoloro: 1440315, color: 1664538, saten: 2212404 } }
+    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 1019337, color: 1153928, saten: 1491631 } },
+    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 1194441, color: 1361659, saten: 1777114 } },
+    { anchoMin: 201, anchoMax: 250, alto: 160, precios: { incoloro: 1411441, color: 1619444, saten: 2131982 } },
+    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 1130778, color: 1290859, saten: 1687857 } },
+    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 1327962, color: 1526788, saten: 2015503 } },
+    { anchoMin: 201, anchoMax: 250, alto: 200, precios: { incoloro: 1555541, color: 1797701, saten: 2389396 } }
   ]},
   { serie: "4050", nombre: "Box Transfer", apertura: "corrediza", medida: "estandar", items: [
-    { ancho: 120, alto: 160, precios: { incoloro: 991022, color: 1121874, saten: 1450197 } },
-    { ancho: 120, alto: 200, precios: { incoloro: 1099367, color: 1255002, saten: 1640972 } }
+    { ancho: 120, alto: 160, precios: { incoloro: 1070304, color: 1211623, saten: 1566213 } },
+    { ancho: 120, alto: 200, precios: { incoloro: 1187316, color: 1355402, saten: 1772250 } }
   ]},
   { serie: "4100", nombre: "Box Esquinero", apertura: "corrediza esquinera", medida: "rango", items: [
-    { anchoMin: 70, anchoMax: 90, alto: 200, precios: { incoloro: 1185180, color: 1355590, saten: 1777142 } },
-    { anchoMin: 91, anchoMax: 120, alto: 200, precios: { incoloro: 1438300, color: 1662523, saten: 2210274 } }
+    { anchoMin: 70, anchoMax: 90, alto: 200, precios: { incoloro: 1279994, color: 1464037, saten: 1919313 } },
+    { anchoMin: 91, anchoMax: 120, alto: 200, precios: { incoloro: 1553364, color: 1795525, saten: 2387096 } }
   ]},
   { serie: "4200", nombre: "Box Angular", apertura: "corrediza angular (retorno 70)", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 1299920, color: 1481186, saten: 1931838 } },
-    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 1462053, color: 1673530, saten: 2196175 } },
-    { anchoMin: 201, anchoMax: 250, alto: 160, precios: { incoloro: 1662979, color: 1912220, saten: 2524757 } },
-    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 1443140, color: 1658393, saten: 2187799 } },
-    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 1625718, color: 1876847, saten: 2491175 } },
-    { anchoMin: 201, anchoMax: 250, alto: 200, precios: { incoloro: 1854636, color: 2150610, saten: 2871132 } }
+    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 1403914, color: 1599681, saten: 2086385 } },
+    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 1579017, color: 1807413, saten: 2371869 } },
+    { anchoMin: 201, anchoMax: 250, alto: 160, precios: { incoloro: 1796017, color: 2065198, saten: 2726737 } },
+    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 1558591, color: 1791065, saten: 2362823 } },
+    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 1755775, color: 2026995, saten: 2690469 } },
+    { anchoMin: 201, anchoMax: 250, alto: 200, precios: { incoloro: 2003007, color: 2322658, saten: 3100822 } }
   ]},
 
   // ---------- LINEA 5000 - OPEN PIVOT (a medida) ----------
   { serie: "5000", nombre: "Open Pivot", apertura: "puerta batiente + fijo", medida: "rango", items: [
-    { anchoMin: 50, anchoMax: 75, alto: 190, precios: { incoloro: 707106, color: 774109, saten: 952206 } },
-    { anchoMin: 76, anchoMax: 100, alto: 190, precios: { incoloro: 806731, color: 896555, saten: 1127463 } },
-    { anchoMin: 101, anchoMax: 160, alto: 190, precios: { incoloro: 1040070, color: 1183788, saten: 1539314 } }
+    { anchoMin: 50, anchoMax: 75, alto: 190, precios: { incoloro: 763675, color: 836038, saten: 1028383 } },
+    { anchoMin: 76, anchoMax: 100, alto: 190, precios: { incoloro: 871269, color: 968279, saten: 1217660 } },
+    { anchoMin: 101, anchoMax: 160, alto: 190, precios: { incoloro: 1123275, color: 1278491, saten: 1662459 } }
   ]},
   { serie: "5100", nombre: "Open Pivot 2 Puertas", apertura: "2 puertas batientes", medida: "rango", items: [
-    { anchoMin: 75, anchoMax: 100, alto: 190, precios: { incoloro: 1003913, color: 1093737, saten: 1335601 } },
-    { anchoMin: 101, anchoMax: 160, alto: 190, precios: { incoloro: 1263682, color: 1407401, saten: 1775349 } }
+    { anchoMin: 75, anchoMax: 100, alto: 190, precios: { incoloro: 1084226, color: 1181236, saten: 1442449 } },
+    { anchoMin: 101, anchoMax: 160, alto: 190, precios: { incoloro: 1364776, color: 1519993, saten: 1917377 } }
   ]},
   { serie: "5200", nombre: "Open Pivot Esquinero", apertura: "batiente esquinera", medida: "rango", items: [
-    { anchoMin: 70, anchoMax: 90, alto: 190, precios: { incoloro: 1152469, color: 1314152, saten: 1713141 } },
-    { anchoMin: 91, anchoMax: 120, alto: 190, precios: { incoloro: 1372040, color: 1587617, saten: 2110458 } }
+    { anchoMin: 70, anchoMax: 90, alto: 190, precios: { incoloro: 1244667, color: 1419284, saten: 1850192 } },
+    { anchoMin: 91, anchoMax: 120, alto: 190, precios: { incoloro: 1481803, color: 1714627, saten: 2279294 } }
   ]},
   { serie: "5300", nombre: "Open Pivot Corner", apertura: "batiente corner", medida: "rango", items: [
-    { anchoMin: 70, anchoMax: 90, alto: 190, precios: { incoloro: 1363378, color: 1525061, saten: 1935766 } },
-    { anchoMin: 91, anchoMax: 120, alto: 190, precios: { incoloro: 1582534, color: 1798111, saten: 2332646 } }
+    { anchoMin: 70, anchoMax: 90, alto: 190, precios: { incoloro: 1472448, color: 1647065, saten: 2090628 } },
+    { anchoMin: 91, anchoMax: 120, alto: 190, precios: { incoloro: 1709137, color: 1941960, saten: 2519258 } }
   ]},
   { serie: "5500", nombre: "Open Pivot Plegadiza", apertura: "2 hojas plegadizas", medida: "estandar", items: [
-    { ancho: 100, alto: 190, precios: { incoloro: 834720, color: 881121, saten: 997124 } }
+    { ancho: 100, alto: 190, precios: { incoloro: 901498, color: 951611, saten: 1076893 } }
   ]},
 
   // ---------- LINEA 6000 - OPEN BOLT (a medida) ----------
   { serie: "6000", nombre: "Open Bolt", apertura: "puerta batiente + fijo", medida: "rango", items: [
-    { anchoMin: 75, anchoMax: 100, alto: 190, precios: { incoloro: 1080644, color: 1168017, saten: 1401650 } },
-    { anchoMin: 101, anchoMax: 160, alto: 190, precios: { incoloro: 1345063, color: 1484861, saten: 1839475 } }
+    { anchoMin: 75, anchoMax: 100, alto: 190, precios: { incoloro: 1167095, color: 1261458, saten: 1513782 } },
+    { anchoMin: 101, anchoMax: 160, alto: 190, precios: { incoloro: 1452668, color: 1603650, saten: 1986633 } }
   ]},
   { serie: "6100", nombre: "Open Bolt 2 Puertas", apertura: "2 puertas batientes", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 160, alto: 190, precios: { incoloro: 1823296, color: 1963093, saten: 2341620 } }
+    { anchoMin: 100, anchoMax: 160, alto: 190, precios: { incoloro: 1969159, color: 2120141, saten: 2528949 } }
   ]},
   { serie: "6200", nombre: "Open Bolt Esquinero", apertura: "batiente esquinera", medida: "rango", items: [
-    { anchoMin: 70, anchoMax: 90, alto: 190, precios: { incoloro: 1422456, color: 1579728, saten: 1974132 } },
-    { anchoMin: 91, anchoMax: 120, alto: 190, precios: { incoloro: 1636036, color: 1845732, saten: 2358576 } }
+    { anchoMin: 70, anchoMax: 90, alto: 190, precios: { incoloro: 1536252, color: 1706106, saten: 2132062 } },
+    { anchoMin: 91, anchoMax: 120, alto: 190, precios: { incoloro: 1766919, color: 1993390, saten: 2547262 } }
   ]},
   { serie: "6300", nombre: "Open Bolt Corner", apertura: "batiente corner", medida: "rango", items: [
-    { anchoMin: 70, anchoMax: 90, alto: 190, precios: { incoloro: 1910302, color: 2067574, saten: 2486370 } },
-    { anchoMin: 91, anchoMax: 120, alto: 190, precios: { incoloro: 2123479, color: 2333175, saten: 2870391 } }
+    { anchoMin: 70, anchoMax: 90, alto: 190, precios: { incoloro: 2063126, color: 2232980, saten: 2685280 } },
+    { anchoMin: 91, anchoMax: 120, alto: 190, precios: { incoloro: 2293357, color: 2519829, saten: 3100022 } }
   ]},
 
   // ---------- LINEA 7000 - STEEL ONE (a medida, herrajes acero inox.) ----------
   { serie: "7000-1P", nombre: "Steel One Frontal 1 Puerta", apertura: "corrediza herraje a la vista", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 200, alto: 160, precios: { incoloro: 1278094, color: 1335413, saten: 1474586 } },
-    { anchoMin: 100, anchoMax: 200, alto: 200, precios: { incoloro: 1343605, color: 1414549, saten: 1589225 } }
+    { anchoMin: 100, anchoMax: 200, alto: 160, precios: { incoloro: 1380341, color: 1442247, saten: 1592553 } },
+    { anchoMin: 100, anchoMax: 200, alto: 200, precios: { incoloro: 1451093, color: 1527713, saten: 1716363 } }
   ]},
   { serie: "7000-2P", nombre: "Steel One Frontal 2 Puertas", apertura: "corrediza herraje a la vista", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 200, alto: 160, precios: { incoloro: 1844890, color: 1902189, saten: 2041383 } },
-    { anchoMin: 100, anchoMax: 200, alto: 200, precios: { incoloro: 1910381, color: 1981346, saten: 2156001 } }
+    { anchoMin: 100, anchoMax: 200, alto: 160, precios: { incoloro: 1992482, color: 2054364, saten: 2204693 } },
+    { anchoMin: 100, anchoMax: 200, alto: 200, precios: { incoloro: 2063211, color: 2139854, saten: 2328481 } }
   ]},
   { serie: "7100", nombre: "Steel One Esquinero", apertura: "corrediza esquinera", medida: "estandar", items: [
-    { ancho: 100, alto: 200, precios: { incoloro: 1973702, color: 2044647, saten: 2219323 } }
+    { ancho: 100, alto: 200, precios: { incoloro: 2131598, color: 2208218, saten: 2396868 } }
   ]},
   { serie: "7200", nombre: "Steel One Angular", apertura: "corrediza angular (retorno 70)", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 200, alto: 160, precios: { incoloro: 1384205, color: 1465257, saten: 1661749 } },
-    { anchoMin: 100, anchoMax: 200, alto: 200, precios: { incoloro: 1475365, color: 1578528, saten: 1821411 } }
+    { anchoMin: 100, anchoMax: 200, alto: 160, precios: { incoloro: 1494941, color: 1582478, saten: 1794689 } },
+    { anchoMin: 100, anchoMax: 200, alto: 200, precios: { incoloro: 1593394, color: 1704810, saten: 1967124 } }
   ]},
 
   // ---------- LINEA 8000 - ESPACIO (zona de ducha) ----------
   { serie: "8100-A", nombre: "Espacio Recta Mod. A", apertura: "panos fijos + aleta", medida: "estandar", items: [
-    { ancho: 150, alto: 190, precios: { incoloro: 1344421, color: 1460208, saten: 1769860 } }
+    { ancho: 150, alto: 190, precios: { incoloro: 1451975, color: 1577025, saten: 1911449 } }
   ]},
   { serie: "8100-B", nombre: "Espacio Recta Mod. B", apertura: "panos fijos + aleta", medida: "estandar", items: [
-    { ancho: 150, alto: 190, precios: { incoloro: 1733386, color: 1926364, saten: 2415750 } }
+    { ancho: 150, alto: 190, precios: { incoloro: 1872057, color: 2080473, saten: 2609010 } }
   ]},
   { serie: "8100-C", nombre: "Espacio Recta Mod. C", apertura: "panos fijos + aleta", medida: "estandar", items: [
-    { ancho: 150, alto: 190, precios: { incoloro: 1712871, color: 1905848, saten: 2394156 } }
+    { ancho: 150, alto: 190, precios: { incoloro: 1849901, color: 2058316, saten: 2585688 } }
   ]},
   { serie: "8100-D", nombre: "Espacio Recta Mod. D", apertura: "panos fijos + aleta", medida: "estandar", items: [
-    { ancho: 150, alto: 190, precios: { incoloro: 2100653, color: 2370822, saten: 3038800 } }
+    { ancho: 150, alto: 190, precios: { incoloro: 2268705, color: 2560487, saten: 3281904 } }
   ]},
 
   // ---------- LINEA 9000 - MEKA (a medida, herraje a la vista) ----------
   { serie: "9000", nombre: "Meka Frontal", apertura: "corrediza herraje a la vista", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 1861897, color: 1969152, saten: 2294794 } },
-    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 2003051, color: 2136307, saten: 2523658 } },
-    { anchoMin: 201, anchoMax: 250, alto: 160, precios: { incoloro: 2178177, color: 2343934, saten: 2808350 } },
-    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 1975763, color: 2109831, saten: 2497350 } },
-    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 2141029, color: 2307600, saten: 2771633 } },
-    { anchoMin: 201, anchoMax: 250, alto: 200, precios: { incoloro: 2348078, color: 2555275, saten: 3114980 } }
+    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 2010848, color: 2126684, saten: 2478377 } },
+    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 2163295, color: 2307212, saten: 2725551 } },
+    { anchoMin: 201, anchoMax: 250, alto: 160, precios: { incoloro: 2352431, color: 2531449, saten: 3033018 } },
+    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 2133824, color: 2278618, saten: 2697138 } },
+    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 2312312, color: 2492208, saten: 2993364 } },
+    { anchoMin: 201, anchoMax: 250, alto: 200, precios: { incoloro: 2535924, color: 2759697, saten: 3364179 } }
   ]},
   { serie: "9200", nombre: "Meka Angular", apertura: "corrediza angular (retorno 70)", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 2254935, color: 2410943, saten: 2859422 } },
-    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 2372885, color: 2554893, saten: 3063792 } },
-    { anchoMin: 201, anchoMax: 250, alto: 160, precios: { incoloro: 2540545, color: 2755056, saten: 3340603 } },
-    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 2392581, color: 2587591, saten: 3124518 } },
-    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 2557848, color: 2785359, saten: 3398802 } },
-    { anchoMin: 201, anchoMax: 250, alto: 200, precios: { incoloro: 2757430, color: 3025568, saten: 3734267 } }
+    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 2435330, color: 2603818, saten: 3088175 } },
+    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 2562716, color: 2759285, saten: 3308896 } },
+    { anchoMin: 201, anchoMax: 250, alto: 160, precios: { incoloro: 2743788, color: 2975460, saten: 3607851 } },
+    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 2583988, color: 2794599, saten: 3374479 } },
+    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 2762475, color: 3008187, saten: 3670706 } },
+    { anchoMin: 201, anchoMax: 250, alto: 200, precios: { incoloro: 2978025, color: 3267613, saten: 4033008 } }
   ]},
 
   // ---------- MAMPARA BLINDEX CORREDIZA (a medida) ----------
   { serie: "30110", nombre: "Blindex Frontal Perfil Brillante", apertura: "corrediza", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 807828, textura: 861159, color: 914490, saten: 1182120 } },
-    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 946597, textura: 1012857, color: 1079118, saten: 1408368 } },
-    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 896145, textura: 959577, color: 1023009, saten: 1337631 } },
-    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 1052414, textura: 1131199, color: 1209985, saten: 1597292 } }
+    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 872454, textura: 930052, color: 987650, saten: 1276690 } },
+    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 1022325, textura: 1093886, color: 1165447, saten: 1521037 } },
+    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 967836, textura: 1036343, color: 1104850, saten: 1444641 } },
+    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 1136607, textura: 1221695, color: 1306783, saten: 1725075 } }
   ]},
   { serie: "30120", nombre: "Blindex Frontal Perfil Mate", apertura: "corrediza", medida: "rango", items: [
-    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 760308, textura: 810503, color: 860697, saten: 1112584 } },
-    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 890915, textura: 953278, color: 1015640, saten: 1325523 } },
-    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 843430, textura: 903131, color: 962832, saten: 1258946 } },
-    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 990507, textura: 1064658, color: 1138809, saten: 1503333 } }
+    { anchoMin: 100, anchoMax: 160, alto: 160, precios: { incoloro: 821133, textura: 875343, color: 929553, saten: 1201590 } },
+    { anchoMin: 161, anchoMax: 200, alto: 160, precios: { incoloro: 962188, textura: 1029540, color: 1096892, saten: 1431565 } },
+    { anchoMin: 100, anchoMax: 160, alto: 200, precios: { incoloro: 910905, textura: 975382, color: 1039858, saten: 1359662 } },
+    { anchoMin: 161, anchoMax: 200, alto: 200, precios: { incoloro: 1069748, textura: 1149831, color: 1229914, saten: 1623600 } }
   ]},
   { serie: "30210", nombre: "Blindex Esquinero Perfil Brillante", apertura: "corrediza esquinera", medida: "estandar", items: [
-    { ancho: 100, alto: 200, precios: { incoloro: 1014400, textura: 1087327, color: 1160253, saten: 1521061 } }
+    { ancho: 100, alto: 200, precios: { incoloro: 1095552, textura: 1174313, color: 1253074, saten: 1642746 } }
   ]},
   { serie: "30220", nombre: "Blindex Esquinero Perfil Mate", apertura: "corrediza esquinera", medida: "estandar", items: [
-    { ancho: 100, alto: 200, precios: { incoloro: 954729, textura: 1023366, color: 1092003, saten: 1431587 } }
+    { ancho: 100, alto: 200, precios: { incoloro: 1031107, textura: 1105236, color: 1179364, saten: 1546114 } }
   ]}
 ];
 
@@ -319,20 +345,38 @@ function cotizarMampara(params) {
 
   if (serie.medida === "estandar") notas.push("Modelo de medidas estandar (medidas especiales: consultar).");
 
-  var instalacion = null;
-  if (params.gran_mendoza === true) instalacion = INSTALACION_GRAN_MENDOZA;
+  // Servicios: flete Glassic siempre; colocacion/medicion solo en Gran Mendoza.
+  var coloc = tipoColocacion(serie);
+  var colocacion = null, medicion = null, medicionOpcional = null;
+  if (params.gran_mendoza === true) {
+    if (coloc.tipo === "estandar") {
+      colocacion = COLOCACION_ESTANDAR;
+      if (INCLUIR_MEDICION_ESTANDAR) medicion = MEDICION_PREVIA_ESTANDAR;
+      else medicionOpcional = MEDICION_PREVIA_ESTANDAR;
+    } else {
+      colocacion = COLOCACION_A_MEDIDA;
+    }
+    if (!coloc.enLista) notas.push("La serie " + serie.serie + " no figura en la lista de colocacion: se aplico la colocacion " + (coloc.tipo === "estandar" ? "standard" : "a medida") + " segun el tipo de mampara. Verificar con tecnica.");
+  }
+  var instalacion = (colocacion !== null) ? colocacion + (medicion || 0) : null;
 
-  var subtotal = precio + (instalacion || 0);
+  var subtotal = precio + FLETE_GLASSIC + (instalacion || 0);
   var res = {
     ok: true,
     listaEdicion: LISTA_EDICION,
+    listaColocacion: LISTA_COLOCACION,
     serie: serie.serie,
     modelo: serie.nombre,
     apertura: serie.apertura,
     medidaCotizada: ancho + " x " + item.alto + " cm",
     cristal: cristal,
     precioMampara: precio,
-    instalacion: instalacion, // null si es fuera del Gran Mendoza
+    flete: FLETE_GLASSIC,
+    tipoColocacion: coloc.tipo,
+    colocacion: colocacion,             // null si es fuera del Gran Mendoza o zona sin confirmar
+    medicion: medicion,                 // solo standard (si esta incluida)
+    medicionOpcional: medicionOpcional, // solo standard (si NO esta incluida)
+    instalacion: instalacion,           // colocacion + medicion (null fuera del Gran Mendoza)
     granMendoza: params.gran_mendoza === true,
     subtotalSinIva: subtotal,
     iva: Math.round(subtotal * IVA),
@@ -352,12 +396,19 @@ function formatearCotizacion(c) {
   t += "\u{1F532} Cristal: " + c.cristal.charAt(0).toUpperCase() + c.cristal.slice(1) + "\n";
   t += "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n";
   t += "Mampara: " + fmt(c.precioMampara) + " + IVA\n";
+  t += "Flete Glassic: " + fmt(c.flete) + " + IVA\n";
   if (c.granMendoza) {
-    t += "Medicion + flete + instalacion (Gran Mendoza): " + fmt(c.instalacion) + " + IVA\n";
+    if (c.tipoColocacion === "estandar") {
+      t += "Colocacion (mampara standard): " + fmt(c.colocacion) + " + IVA\n";
+      if (c.medicion) t += "Medicion previa a domicilio: " + fmt(c.medicion) + " + IVA\n";
+      if (c.medicionOpcional) t += "(Opcional, no sumado) Medicion previa a domicilio: " + fmt(c.medicionOpcional) + " + IVA\n";
+    } else {
+      t += "Colocacion a medida (incluye medicion): " + fmt(c.colocacion) + " + IVA\n";
+    }
     t += "TOTAL: " + fmt(c.subtotalSinIva) + " + IVA (" + fmt(c.totalConIva) + " IVA incluido)\n";
   } else {
-    t += "\u26A0 FUERA DEL GRAN MENDOZA: medicion/flete/instalacion la calcula el vendedor.\n";
-    t += "TOTAL (solo mampara): " + fmt(c.subtotalSinIva) + " + IVA (" + fmt(c.totalConIva) + " IVA incluido)\n";
+    t += "\u26A0 FUERA DEL GRAN MENDOZA: medicion/colocacion la calcula el vendedor.\n";
+    t += "TOTAL (mampara + flete Glassic): " + fmt(c.subtotalSinIva) + " + IVA (" + fmt(c.totalConIva) + " IVA incluido)\n";
   }
   if (c.notas.length > 0) {
     for (var i = 0; i < c.notas.length; i++) t += "\u{1F4DD} " + c.notas[i] + "\n";
@@ -387,10 +438,26 @@ var MAMPARAS_GUIA = [
   "Para cotizar una mampara necesitas: modelo, ancho y alto en cm, cristal, y si esta dentro del Gran Mendoza. El PRECIO lo calcula el sistema y lo aprueba un asesor: vos NUNCA lo decis en el chat."
 ].join("\n");
 
+// Aviso para el vendedor cuando no quedo claro si la obra es en Gran Mendoza.
+function avisoZonaSinConfirmar(c) {
+  if (!c || !c.ok) return "";
+  var extra;
+  if (c.tipoColocacion === "estandar") {
+    extra = fmt(COLOCACION_ESTANDAR) + " + IVA de colocacion" + (INCLUIR_MEDICION_ESTANDAR ? " + " + fmt(MEDICION_PREVIA_ESTANDAR) + " + IVA de medicion previa" : "");
+  } else {
+    extra = fmt(COLOCACION_A_MEDIDA) + " + IVA de colocacion a medida (incluye medicion)";
+  }
+  return "\n⚠ No quedo claro si la obra esta dentro del Gran Mendoza: confirmar antes de enviar (dentro suma " + extra + ").";
+}
+
 module.exports = {
   cotizarMampara: cotizarMampara,
   formatearCotizacion: formatearCotizacion,
+  avisoZonaSinConfirmar: avisoZonaSinConfirmar,
   MAMPARAS_GUIA: MAMPARAS_GUIA,
   SERIES: SERIES,
-  INSTALACION_GRAN_MENDOZA: INSTALACION_GRAN_MENDOZA
+  FLETE_GLASSIC: FLETE_GLASSIC,
+  COLOCACION_ESTANDAR: COLOCACION_ESTANDAR,
+  MEDICION_PREVIA_ESTANDAR: MEDICION_PREVIA_ESTANDAR,
+  COLOCACION_A_MEDIDA: COLOCACION_A_MEDIDA
 };
