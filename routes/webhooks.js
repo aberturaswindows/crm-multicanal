@@ -5,6 +5,7 @@ var classifyMessage = require("../services/ai-router").classifyMessage;
 var generateAutoReply = require("../services/ai-router").generateAutoReply;
 var detectLostReason = require("../services/ai-router").detectLostReason;
 var mamparas = require("../services/mamparas");
+var catalogos = require("../services/catalogos");
 var whatsapp = require("../services/channels/whatsapp");
 var instagram = require("../services/channels/instagram");
 var facebook = require("../services/channels/facebook");
@@ -288,7 +289,7 @@ async function handleAutoReply(contact, channel) {
             console.log("[FICHA] Guardada para " + contact.name + " (cotizacion #" + cotizId + ", " + (Array.isArray(r.aberturas) ? r.aberturas.length : 0) + " aberturas)");
 
             // MAMPARAS: si la ficha incluye mamparas con modelo y cristal, el sistema
-            // calcula la cotizacion (deterministico, lista L106) y la deja como
+            // calcula la cotizacion (deterministico, lista L107) y la deja como
             // mensaje interno para que el VENDEDOR la revise y la envie.
             // Claudia NUNCA envia el precio al cliente.
             try {
@@ -350,6 +351,16 @@ async function handleAutoReply(contact, channel) {
       db.prepare("UPDATE messages SET status='failed', failed_reason=? WHERE id=?").run(sendResult.error || 'Unknown error', msgId);
     }
     console.log("[CLAUDIA] " + channel.toUpperCase() + " -> " + contact.name + ": " + result.reply.substring(0, 60) + "... | Enviado: " + sendResult.success);
+
+    // CATALOGO DE MAMPARAS: si Claudia lo pidio (cliente sin modelo definido),
+    // se envia despues de su mensaje. Una sola vez por contacto.
+    if (result.enviarCatalogoMamparas && sendResult.success) {
+      try {
+        await catalogos.enviarCatalogoMamparas(db, contact, channel);
+      } catch (catErr) {
+        console.error("[CATALOGO] Error enviando catalogo:", catErr.message);
+      }
+    }
   } catch (err) {
     console.error("[AUTO-REPLY] Error:", err.message);
   }
